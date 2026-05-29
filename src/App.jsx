@@ -42,7 +42,7 @@ const DEFAULT_MANAGER_CONFIG = {
 };
 
 const PRESET_USERS = {
-  "ksm@csquaredasset.com":        { name:"인사담당자1", dept:"경영지원팀" },
+  "ksm@csquaredasset.com":        { name:"강수민", dept:"경영지원팀" },
   "jsw@csquaredasset.com":        { name:"인사담당자2", dept:"경영지원팀" },
   "cjhfund@gmail.com":            { name:"대표이사",    dept:"경영진"     },
   "jk.choi@csquaredasset.com":    { name:"자산운용파트장", dept:"자산운용파트" },
@@ -572,26 +572,32 @@ export default function App() {
               </div>
               <div style={{marginBottom:20,padding:"1rem",background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)"}}>
                 <h3 style={{fontSize:14,fontWeight:500,marginBottom:12}}>결재라인</h3>
-                {[
-                  ["1단계 (신청자)", cu?.name, true],
-                  ["2단계 (부서 팀장)", null, false],
-                  ["3단계 (인사담당자)", getUserName(HR_APPROVER), true],
-                  ["4단계 (대표이사)", getUserName(CEO_EMAIL), true],
-                ].map(([step,val,ro],i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
-                    <span style={{fontSize:12,color:"var(--color-text-secondary)",minWidth:120}}>{step}</span>
-                    {ro ? (
-                      <input value={val||""} readOnly style={{flex:1,background:"var(--color-background-tertiary)",boxSizing:"border-box"}} />
-                    ) : (
-                      <select value={applyForm.approver2} onChange={e=>setApplyForm(p=>({...p,approver2:e.target.value}))} style={{flex:1,boxSizing:"border-box"}}>
-                        <option value="">팀장 선택</option>
-                        {Object.entries(managerConfig).map(([dept,email])=>(
-                          <option key={email} value={email}>{dept}장 ({getUserName(email) !== email ? getUserName(email) : dept+"장"})</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                ))}
+                {(()=>{
+                  const isSelfHR = currentUser?.email === HR_APPROVER;
+                  const rows = [
+                    {step:"1단계 (신청자)",    val: cu?.name,                   readonly: true,  auto: false},
+                    {step:"2단계 (부서 팀장)", val: null,                        readonly: false, auto: isSelfHR && applyForm.approver2===currentUser?.email},
+                    {step:"3단계 (인사담당자)",val: getUserName(HR_APPROVER),    readonly: true,  auto: isSelfHR},
+                    {step:"4단계 (대표이사)",  val: getUserName(CEO_EMAIL),      readonly: true,  auto: false},
+                  ];
+                  return rows.map(({step,val,readonly,auto},i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+                      <span style={{fontSize:12,color:"var(--color-text-secondary)",minWidth:120}}>{step}</span>
+                      {auto ? (
+                        <input value="✓ 자동 통과" readOnly style={{flex:1,background:"#e1f5ee",boxSizing:"border-box",color:"#0f6e56",fontWeight:500}} />
+                      ) : readonly ? (
+                        <input value={val||""} readOnly style={{flex:1,background:"var(--color-background-tertiary)",boxSizing:"border-box"}} />
+                      ) : (
+                        <select value={applyForm.approver2} onChange={e=>setApplyForm(p=>({...p,approver2:e.target.value}))} style={{flex:1,boxSizing:"border-box"}}>
+                          <option value="">팀장 선택</option>
+                          {Object.entries(managerConfig).map(([dept,email])=>(
+                            <option key={email} value={email}>{dept}장 ({getUserName(email) !== email ? getUserName(email) : dept+"장"})</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ));
+                })()}
               </div>
               <button onClick={handleApply} style={{width:"100%",padding:"12px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:500,fontSize:15}}>휴가 신청하기</button>
             </div>
