@@ -28,6 +28,8 @@ emailjs.init(EMAILJS_PUBLIC_KEY);
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 const DEPARTMENTS = ["자산운용파트","해외운용파트","마케팅팀","리스크관리팀","운용지원팀","경영지원팀"];
 const HR_EMAILS   = ["ksm@csquaredasset.com","jsw@csquaredasset.com"];
+const HR_APPROVER = "ksm@csquaredasset.com";  // 결재 3단계 고정
+const HR_VIEWER   = "jsw@csquaredasset.com";  // 연차 조회/수정 전용
 const CEO_EMAIL   = "cjhfund@gmail.com";
 
 const DEFAULT_MANAGER_CONFIG = {
@@ -227,7 +229,8 @@ export default function App() {
   const getUserRole = useCallback((email)=>{
     if(!email) return "user";
     if(email===CEO_EMAIL) return "ceo";
-    if(HR_EMAILS.includes(email)) return "hr";
+    if(email===HR_APPROVER) return "hr";
+    if(email===HR_VIEWER) return "hr_viewer";
     if(Object.values(managerConfig).includes(email)) return "manager";
     return "user";
   },[managerConfig]);
@@ -289,6 +292,10 @@ export default function App() {
     const dayCount = applyForm.type==="half" ? applyForm.dates.length*0.5 : applyForm.dates.length;
     const u = users[currentUser.email];
     if(dayCount > (u.annualLeave-u.usedLeave)){ showNotif("잔여 연차가 부족합니다."); return; }
+    // 신청자=2단계 or 신청자=3단계인 경우 자동 step 올리기
+    let autoStep = 1;
+    if(applyForm.approver2 === currentUser.email) autoStep = 2; // 2단계 자동통과
+    if(applyForm.approver2 === currentUser.email && HR_APPROVER === currentUser.email) autoStep = 3; // 2+3단계 자동통과
     await addDoc(collection(db,"requests"),{
       applicantEmail: currentUser.email,
       applicantName:  currentUser.name,
@@ -298,9 +305,9 @@ export default function App() {
       dayCount,
       approver1: currentUser.email,
       approver2: applyForm.approver2,
-      approver3: HR_EMAILS[0],
+      approver3: HR_APPROVER,
       approver4: CEO_EMAIL,
-      step:   1,
+      step:   autoStep,
       status: "pending",
       createdAt: new Date().toISOString(),
       approvedAt: null,
@@ -370,22 +377,30 @@ export default function App() {
   const getMyApprovalList = () => {
     if(!currentUser) return [];
     const email = currentUser.email;
-    const role  = getUserRole(email);
+    const isCeo      = email === CEO_EMAIL;
+    const isHr       = email === HR_APPROVER;
+    const isHrViewer = email === HR_VIEWER;
+    const isManager  = Object.values(managerConfig).includes(email);
     return requests.filter(r=>{
-      if(role==="ceo")     return r.step>=4 || r.status==="approved" || r.status==="rejected";
-      if(role==="hr")      return r.step>=3 || r.status==="approved" || r.status==="rejected";
-      if(role==="manager") return (r.approver2===email && r.step>=2) || r.status==="approved" || r.status==="rejected";
-      return r.applicantEmail===email && (r.status==="approved"||r.status==="rejected");
+      if(r.applicantEmail === email) return true;
+      if(isCeo      && (r.step>=4 || r.status==="approved" || r.status==="rejected")) return true;
+      if(isHr       && (r.step>=3 || r.status==="approved" || r.status==="rejected")) return true;
+      if(isHrViewer && (r.status==="approved" || r.status==="rejected")) return true;
+      if(isManager  && r.approver2===email && (r.step>=2 || r.status==="approved" || r.status==="rejected")) return true;
+      return false;
     });
   };
 
   const canApprove = r => {
     if(!currentUser) return false;
     const email = currentUser.email;
-    const role  = getUserRole(email);
-    if(role==="ceo"     && r.step===4) return true;
-    if(role==="hr"      && r.step===3) return true;
-    if(role==="manager" && r.approver2===email && r.step===2) return true;
+    if(r.applicantEmail === email) return false;
+    const isCeo     = email === CEO_EMAIL;
+    const isHr      = email === HR_APPROVER;
+    const isManager = Object.values(managerConfig).includes(email);
+    if(isCeo     && r.step===4) return true;
+    if(isHr      && r.step===3) return true;
+    if(isManager && r.approver2===email && r.step===2) return true;
     return false;
   };
 
@@ -560,7 +575,7 @@ export default function App() {
                 {[
                   ["1단계 (신청자)", cu?.name, true],
                   ["2단계 (부서 팀장)", null, false],
-                  ["3단계 (인사담당자)", getUserName(HR_EMAILS[0]), true],
+                  ["3단계 (인사담당자)", getUserName(HR_APPROVER), true],
                   ["4단계 (대표이사)", getUserName(CEO_EMAIL), true],
                 ].map(([step,val,ro],i)=>(
                   <div key={i} style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
@@ -571,7 +586,7 @@ export default function App() {
                       <select value={applyForm.approver2} onChange={e=>setApplyForm(p=>({...p,approver2:e.target.value}))} style={{flex:1,boxSizing:"border-box"}}>
                         <option value="">팀장 선택</option>
                         {Object.entries(managerConfig).map(([dept,email])=>(
-                          <option key={email} value={email}>{dept}장 ({getUserName(email)})</option>
+                          <option key={email} value={email}>{dept}장 ({getUserName(email) !== email ? getUserName(email) : dept+"장"})</option>
                         ))}
                       </select>
                     )}
@@ -646,17 +661,24 @@ export default function App() {
         )}
 
         {/* ── 연차관리 탭 ── */}
-        {tab==="annual" && (
+        {tab==="annual" && (()=>{
+          const myEmail = currentUser?.email;
+          const isHRUser  = myEmail === HR_APPROVER || myEmail === HR_VIEWER;
+          const isCEOUser = myEmail === CEO_EMAIL;
+          const isAdmin   = isHRUser || isCEOUser;
+          return (
           <div>
             <h2 style={{fontSize:18,fontWeight:500,marginBottom:16}}>연차관리</h2>
-            {getUserRole(currentUser?.email)==="hr" ? (
+            {isAdmin ? (
               <div>
-                <p style={{fontSize:13,color:"var(--color-text-secondary)",marginBottom:16}}>💼 인사담당자 전용 — 전체 직원 연차 조회 및 수정</p>
+                <p style={{fontSize:13,color:"var(--color-text-secondary)",marginBottom:16}}>
+                  {myEmail===HR_APPROVER ? "💼 인사담당자 (강수민) — 전체 직원 연차 조회 및 수정" : myEmail===HR_VIEWER ? "💼 인사담당자 (jsw) — 전체 직원 연차 조회 및 수정" : "👔 대표이사 — 전체 직원 연차 조회"}
+                </p>
                 <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",overflow:"hidden",marginBottom:24}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                     <thead>
                       <tr style={{background:"var(--color-background-secondary)"}}>
-                        {["이름","부서","이메일","부여연차","사용연차","잔여연차","수정"].map(h=>(
+                        {["이름","부서","이메일","부여연차","사용연차","잔여연차"].map(h=>(
                           <th key={h} style={{padding:"10px 12px",textAlign:"left",fontWeight:500,fontSize:12,color:"var(--color-text-secondary)",borderBottom:"0.5px solid var(--color-border-tertiary)"}}>{h}</th>
                         ))}
                       </tr>
@@ -664,40 +686,64 @@ export default function App() {
                     <tbody>
                       {Object.entries(users).map(([email,u])=>{
                         const rem = (u.annualLeave||0)-(u.usedLeave||0);
-                        const isEditing = editLeave[email]!==undefined;
+                        const keyA = email+":annual";
+                        const keyU = email+":used";
                         return (
                           <tr key={email} style={{borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
                             <td style={{padding:"10px 12px",fontWeight:500}}>{u.name}</td>
                             <td style={{padding:"10px 12px",color:"var(--color-text-secondary)"}}>{u.dept}</td>
                             <td style={{padding:"10px 12px",color:"var(--color-text-secondary)",fontSize:11}}>{email}</td>
-                            <td style={{padding:"10px 12px"}}>
-                              {isEditing ? (
-                                <input type="number" value={editLeave[email]} onChange={e=>setEditLeave(p=>({...p,[email]:e.target.value}))} style={{width:60,padding:"4px 6px"}} min={0} />
-                              ) : (
-                                <span style={{color:"#378add",fontWeight:500}}>{u.annualLeave||0}일</span>
-                              )}
-                            </td>
-                            <td style={{padding:"10px 12px"}}>
-                              <button onClick={()=>setTab("inbox")} style={{background:"none",border:"none",cursor:"pointer",color:"#ba7517",fontWeight:500,textDecoration:"underline",fontSize:13,padding:0}}>{u.usedLeave||0}일</button>
-                            </td>
-                            <td style={{padding:"10px 12px",color:rem<3?"#e24b4a":"#1d9e75",fontWeight:500}}>{rem}일</td>
-                            <td style={{padding:"10px 12px"}}>
-                              {isEditing ? (
-                                <div style={{display:"flex",gap:4}}>
-                                  <button onClick={()=>handleSaveLeave(email)} style={{padding:"4px 8px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:11}}>저장</button>
-                                  <button onClick={()=>setEditLeave(p=>{const n={...p};delete n[email];return n;})} style={{padding:"4px 8px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:11}}>취소</button>
+                            {/* 부여연차 */}
+                            <td style={{padding:"8px 12px"}}>
+                              {isHRUser && editLeave[keyA]!==undefined ? (
+                                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                                  <input type="number" value={editLeave[keyA]} onChange={e=>setEditLeave(p=>({...p,[keyA]:e.target.value}))} style={{width:55,padding:"3px 5px"}} min={0} />
+                                  <button onClick={async()=>{
+                                    const val=parseInt(editLeave[keyA]);
+                                    if(isNaN(val)||val<0){showNotif("올바른 값을 입력해주세요.");return;}
+                                    await updateDoc(doc(db,"users",emailToKey(email)),{annualLeave:val});
+                                    setEditLeave(p=>{const n={...p};delete n[keyA];return n;});
+                                    showNotif("부여연차 수정 완료!");
+                                  }} style={{padding:"3px 7px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:11}}>저장</button>
+                                  <button onClick={()=>setEditLeave(p=>{const n={...p};delete n[keyA];return n;})} style={{padding:"3px 7px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:11}}>취소</button>
                                 </div>
                               ) : (
-                                <button onClick={()=>setEditLeave(p=>({...p,[email]:u.annualLeave||0}))} style={{padding:"4px 8px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:11}}>수정</button>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{color:"#378add",fontWeight:500}}>{u.annualLeave||0}일</span>
+                                  {isHRUser && <button onClick={()=>setEditLeave(p=>({...p,[keyA]:u.annualLeave||0}))} style={{padding:"2px 6px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10,color:"var(--color-text-secondary)"}}>수정</button>}
+                                </div>
                               )}
                             </td>
+                            {/* 사용연차 */}
+                            <td style={{padding:"8px 12px"}}>
+                              {isHRUser && editLeave[keyU]!==undefined ? (
+                                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                                  <input type="number" value={editLeave[keyU]} onChange={e=>setEditLeave(p=>({...p,[keyU]:e.target.value}))} style={{width:55,padding:"3px 5px"}} min={0} />
+                                  <button onClick={async()=>{
+                                    const val=parseInt(editLeave[keyU]);
+                                    if(isNaN(val)||val<0){showNotif("올바른 값을 입력해주세요.");return;}
+                                    await updateDoc(doc(db,"users",emailToKey(email)),{usedLeave:val});
+                                    setEditLeave(p=>{const n={...p};delete n[keyU];return n;});
+                                    showNotif("사용연차 수정 완료!");
+                                  }} style={{padding:"3px 7px",background:"#ba7517",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:11}}>저장</button>
+                                  <button onClick={()=>setEditLeave(p=>{const n={...p};delete n[keyU];return n;})} style={{padding:"3px 7px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:11}}>취소</button>
+                                </div>
+                              ) : (
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <button onClick={()=>setTab("inbox")} style={{background:"none",border:"none",cursor:"pointer",color:"#ba7517",fontWeight:500,textDecoration:"underline",fontSize:13,padding:0}}>{u.usedLeave||0}일</button>
+                                  {isHRUser && <button onClick={()=>setEditLeave(p=>({...p,[keyU]:u.usedLeave||0}))} style={{padding:"2px 6px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10,color:"var(--color-text-secondary)"}}>수정</button>}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{padding:"10px 12px",color:rem<3?"#e24b4a":"#1d9e75",fontWeight:500}}>{rem}일</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
-                {/* 팀장 이메일 관리 */}
+                {/* 팀장 이메일 관리 — 인사담당자만 */}
+                {isHRUser && (
                 <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1.25rem"}}>
                   <h3 style={{fontSize:15,fontWeight:500,marginBottom:12}}>팀장 이메일 관리</h3>
                   {Object.entries(managerConfig).map(([dept,email])=>(
@@ -708,6 +754,7 @@ export default function App() {
                   ))}
                   <button onClick={handleSaveManagerConfig} style={{marginTop:8,padding:"7px 16px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:500}}>저장</button>
                 </div>
+                )}
               </div>
             ) : (
               <div>
@@ -723,7 +770,8 @@ export default function App() {
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {/* ── 내 정보 탭 ── */}
         {tab==="myinfo" && (
