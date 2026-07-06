@@ -322,13 +322,17 @@ export default function App() {
   // ── 결재 ─────────────────────────────────────────────────────────────────
   const handleApprove = async (r) => {
     const ref = doc(db,"requests",r.id);
-    if(r.step===2) await updateDoc(ref,{step:3});
+    if(r.step===2){
+      // 3단계 결재자가 본인이면 자동 통과 → 바로 4단계
+      if(r.approver3 === currentUser.email) await updateDoc(ref,{step:4});
+      else await updateDoc(ref,{step:3});
+    }
     else if(r.step===3) await updateDoc(ref,{step:4});
     else if(r.step===4){
       await updateDoc(ref,{step:5,status:"approved",approvedAt:new Date().toISOString()});
       const ukey = emailToKey(r.applicantEmail);
       const u = users[r.applicantEmail];
-      await updateDoc(doc(db,"users",ukey),{usedLeave:(u.usedLeave||0)+r.dayCount});
+      await updateDoc(doc(db,"users",ukey),{usedLeave:(u?.usedLeave||0)+r.dayCount});
     }
   };
 
@@ -385,11 +389,18 @@ export default function App() {
     const isHrViewer = email === HR_VIEWER;
     const isManager  = Object.values(managerConfig).includes(email);
     return requests.filter(r=>{
+      // 본인 신청 건은 항상 표시
       if(r.applicantEmail === email) return true;
-      if(isCeo      && (r.step>=4 || r.status==="approved" || r.status==="rejected")) return true;
-      if(isHr       && (r.step>=3 || r.status==="approved" || r.status==="rejected")) return true;
+      // 대표이사
+      if(isCeo && (r.step>=4 || r.status==="approved" || r.status==="rejected")) return true;
+      // 인사담당자 (3단계 결재자)
+      if(isHr && (r.step>=3 || r.status==="approved" || r.status==="rejected")) return true;
+      // 팀장 (2단계 결재자) — step>=2 또는 완료건
+      if(isManager && r.approver2===email && (r.step>=2 || r.status==="approved" || r.status==="rejected")) return true;
+      // 팀장이 step:1로 저장된 경우도 표시 (신청 직후)
+      if(isManager && r.approver2===email && r.step===1) return true;
+      // HR뷰어
       if(isHrViewer && (r.status==="approved" || r.status==="rejected")) return true;
-      if(isManager  && r.approver2===email && (r.step>=2 || r.status==="approved" || r.status==="rejected")) return true;
       return false;
     });
   };
