@@ -292,7 +292,9 @@ export default function App() {
     if(!applyForm.approver2){ showNotif("2단계 결재자를 선택해주세요."); return; }
     const dayCount = applyForm.type==="half" ? applyForm.dates.length*0.5 : applyForm.dates.length;
     const u = users[currentUser.email];
-    if(dayCount > (u.annualLeave-u.usedLeave)){ showNotif("잔여 연차가 부족합니다."); return; }
+    const annualLeave = u?.annualLeave ?? 15;
+    const usedLeave   = u?.usedLeave   ?? 0;
+    if(dayCount > (annualLeave - usedLeave)){ showNotif("잔여 연차가 부족합니다."); return; }
     // 신청자=2단계 or 신청자=3단계인 경우 자동 step 올리기
     let autoStep = 1;
     if(applyForm.approver2 === currentUser.email) autoStep = 2; // 2단계 자동통과
