@@ -1,0 +1,22 @@
+{
+  "name": "씨스퀘어자산운용 휴가관리",
+  "short_name": "휴가관리",
+  "description": "씨스퀘어자산운용(주) 휴가관리 시스템",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1d9e75",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

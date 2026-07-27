@@ -178,6 +178,7 @@ export default function App() {
   const [myInfoForm,setMyInfoForm]= useState({position:"",oldPw:"",newPw:"",confirmPw:""});
   const [editLeave, setEditLeave] = useState({});
   const [leaveSearch, setLeaveSearch] = useState("");
+  const [adminPwReset, setAdminPwReset] = useState({email:"",newPw:"",confirm:""});
 
   const showNotif = (text,ms=2800) => { setNotif(text); setTimeout(()=>setNotif(""),ms); };
 
@@ -544,19 +545,19 @@ export default function App() {
       )}
 
       {/* 헤더 */}
-      <div style={{background:"var(--color-background-primary)",borderBottom:"0.5px solid var(--color-border-tertiary)",padding:"0 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",height:52,position:"sticky",top:0,zIndex:100}}>
-        <span style={{fontWeight:500,fontSize:15}}>🏢 씨스퀘어자산운용(주) 휴가관리</span>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:12,color:"var(--color-text-secondary)"}}>{cu?.name} ({cu?.dept})</span>
+      <div style={{background:"var(--color-background-primary)",borderBottom:"0.5px solid var(--color-border-tertiary)",padding:"0 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",height:52,position:"sticky",top:0,zIndex:100}}>
+        <span style={{fontWeight:500,fontSize:14}}>🏢 씨스퀘어자산운용</span>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:12,color:"var(--color-text-secondary)",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cu?.name}</span>
           <button onClick={()=>{setCurrentUser(null);setPage("login");setLoginForm({email:"",password:""}); }} style={{fontSize:12,padding:"4px 10px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:6,cursor:"pointer"}}>로그아웃</button>
         </div>
       </div>
 
       {/* 탭 */}
-      <div style={{background:"var(--color-background-primary)",borderBottom:"0.5px solid var(--color-border-tertiary)",display:"flex",padding:"0 1.5rem"}}>
+      <div style={{background:"var(--color-background-primary)",borderBottom:"0.5px solid var(--color-border-tertiary)",display:"flex",padding:"0 0.5rem"}}>
         {[["apply","휴가신청"],["inbox","결재함"],["annual","연차관리"],["myinfo","내 정보"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{
-            padding:"12px 18px",background:"none",border:"none",cursor:"pointer",fontSize:14,
+            flex:1,padding:"12px 4px",background:"none",border:"none",cursor:"pointer",fontSize:13,
             fontWeight:tab===k?500:400,
             color:tab===k?"#1d9e75":"var(--color-text-secondary)",
             borderBottom:tab===k?"2px solid #1d9e75":"2px solid transparent",
@@ -570,17 +571,17 @@ export default function App() {
         ))}
       </div>
 
-      <div style={{padding:"1.5rem",maxWidth:900,margin:"0 auto"}}>
+      <div style={{padding:"1rem",maxWidth:900,margin:"0 auto"}}>
 
         {/* ── 휴가신청 탭 ── */}
         {tab==="apply" && (
           <div>
             <h2 style={{fontSize:18,fontWeight:500,marginBottom:16}}>휴가신청</h2>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
               {[["부여 연차",annualLeave,"#378add"],["사용 연차",usedLeave,"#ba7517"],["잔여 연차",remainingLeave,"#1d9e75"]].map(([l,v,c])=>(
-                <div key={l} style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1rem",textAlign:"center"}}>
-                  <div style={{fontSize:12,color:"var(--color-text-secondary)",marginBottom:4}}>{l}</div>
-                  <div style={{fontSize:24,fontWeight:500,color:c}}>{v}일</div>
+                <div key={l} style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"0.75rem",textAlign:"center"}}>
+                  <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>{l}</div>
+                  <div style={{fontSize:20,fontWeight:500,color:c}}>{v}일</div>
                 </div>
               ))}
             </div>
@@ -827,7 +828,7 @@ export default function App() {
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                     <thead>
                       <tr style={{background:"var(--color-background-secondary)"}}>
-                        {["이름","부서","이메일","부여연차","사용연차","잔여연차"].map(h=>(
+                        {["이름","직책","부서","이메일","부여연차","사용연차","잔여연차"].map(h=>(
                           <th key={h} style={{padding:"10px 12px",textAlign:"left",fontWeight:500,fontSize:12,color:"var(--color-text-secondary)",borderBottom:"0.5px solid var(--color-border-tertiary)"}}>{h}</th>
                         ))}
                       </tr>
@@ -893,7 +894,7 @@ export default function App() {
                 </div>
                 {/* 팀장 이메일 관리 — 인사담당자만 */}
                 {isHRUser && (
-                <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1.25rem"}}>
+                <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1.25rem",marginBottom:16}}>
                   <h3 style={{fontSize:15,fontWeight:500,marginBottom:12}}>팀장 이메일 관리</h3>
                   {Object.entries(managerConfig).map(([dept,email])=>(
                     <div key={dept} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
@@ -902,6 +903,33 @@ export default function App() {
                     </div>
                   ))}
                   <button onClick={handleSaveManagerConfig} style={{marginTop:8,padding:"7px 16px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:500}}>저장</button>
+                </div>
+                )}
+                {/* 관리자 비밀번호 초기화 — 인사담당자만 */}
+                {isHRUser && (
+                <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1.25rem"}}>
+                  <h3 style={{fontSize:15,fontWeight:500,marginBottom:4}}>직원 비밀번호 초기화</h3>
+                  <p style={{fontSize:12,color:"var(--color-text-secondary)",marginBottom:12}}>임시 비밀번호 이메일 발송이 안 될 경우 직접 변경해주세요.</p>
+                  <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                    <select value={adminPwReset.email} onChange={e=>setAdminPwReset(p=>({...p,email:e.target.value}))} style={{flex:2,boxSizing:"border-box",fontSize:13}}>
+                      <option value="">직원 선택</option>
+                      {Object.entries(users).map(([email,u])=>(
+                        <option key={email} value={email}>{u.name} ({email})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                    <input type="text" value={adminPwReset.newPw} onChange={e=>setAdminPwReset(p=>({...p,newPw:e.target.value}))} placeholder="새 비밀번호" style={{flex:1,boxSizing:"border-box",fontSize:13}} />
+                    <input type="text" value={adminPwReset.confirm} onChange={e=>setAdminPwReset(p=>({...p,confirm:e.target.value}))} placeholder="비밀번호 확인" style={{flex:1,boxSizing:"border-box",fontSize:13}} />
+                    <button onClick={async()=>{
+                      if(!adminPwReset.email){showNotif("직원을 선택해주세요.");return;}
+                      if(!adminPwReset.newPw){showNotif("새 비밀번호를 입력해주세요.");return;}
+                      if(adminPwReset.newPw!==adminPwReset.confirm){showNotif("비밀번호가 일치하지 않습니다.");return;}
+                      await updateDoc(doc(db,"users",emailToKey(adminPwReset.email)),{password:adminPwReset.newPw});
+                      setAdminPwReset({email:"",newPw:"",confirm:""});
+                      showNotif("비밀번호가 변경되었습니다!");
+                    }} style={{padding:"7px 14px",background:"#378add",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:500,flexShrink:0}}>변경</button>
+                  </div>
                 </div>
                 )}
               </div>
