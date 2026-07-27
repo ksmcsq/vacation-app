@@ -805,6 +805,7 @@ export default function App() {
                         return (
                           <tr key={email} style={{borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
                             <td style={{padding:"10px 12px",fontWeight:500}}>{u.name}</td>
+                            <td style={{padding:"10px 12px",color:"var(--color-text-secondary)"}}>{u.position||"-"}</td>
                             <td style={{padding:"10px 12px",color:"var(--color-text-secondary)"}}>{u.dept}</td>
                             <td style={{padding:"10px 12px",color:"var(--color-text-secondary)",fontSize:11}}>{email}</td>
                             {/* 부여연차 */}
