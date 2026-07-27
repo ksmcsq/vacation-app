@@ -6,7 +6,6 @@ import {
   getFirestore, doc, setDoc, getDoc, getDocs,
   collection, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy
 } from "firebase/firestore";
-import emailjs from "@emailjs/browser";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBFDDpDgUrCWxUPeUw28j0F1T9mLmjtDVk",
@@ -17,13 +16,10 @@ const firebaseConfig = {
   appId: "1:16834141553:web:17e779ed6e725b6990aad0"
 };
 
-const EMAILJS_SERVICE_ID  = "csquared";
-const EMAILJS_TEMPLATE_ID = "template_z1ow2nn";
-const EMAILJS_PUBLIC_KEY  = "bw7R_6YXR3x9F9y4qu-Np";
+
 
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
-emailjs.init(EMAILJS_PUBLIC_KEY);
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 const DEPARTMENTS = ["자산운용파트","해외운용파트","마케팅팀","리스크관리팀","운용지원팀","경영지원팀"];
@@ -53,11 +49,6 @@ const PRESET_USERS = {
 };
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
-function generateTempPw() {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  return Array.from({length:5}, () => chars[Math.floor(Math.random()*chars.length)]).join("");
-}
-
 function formatDate(d) {
   if (!d) return "";
   const dt = new Date(d);
@@ -268,24 +259,7 @@ export default function App() {
     setRegForm({email:"",name:"",dept:"자산운용파트",password:"",confirm:""});
   };
 
-  // ── 비밀번호 찾기 ─────────────────────────────────────────────────────────
-  const handleFindPw = async () => {
-    const u = users[findForm.email];
-    if(!u||u.name!==findForm.name){ setMsg("일치하는 계정이 없습니다."); return; }
-    const tempPw = generateTempPw();
-    const key = emailToKey(findForm.email);
-    await updateDoc(doc(db,"users",key),{password:tempPw});
-    try {
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID,{
-        to_email: findForm.email,
-        to_name:  u.name,
-        temp_password: tempPw
-      });
-      setMsg(`임시 비밀번호를 ${findForm.email} 로 발송했습니다.`);
-    } catch(e) {
-      setMsg(`임시 비밀번호: ${tempPw} (이메일 발송 실패 — 직접 전달해주세요)`);
-    }
-  };
+
 
   // ── 휴가 신청 ─────────────────────────────────────────────────────────────
   const handleApply = async () => {
@@ -484,8 +458,11 @@ export default function App() {
           <button onClick={handleLogin} style={{width:"100%",padding:"10px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:500,fontSize:14,marginBottom:12}}>로그인</button>
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>{setAuthMode("register");setMsg("");}} style={{flex:1,padding:"8px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:8,cursor:"pointer",fontSize:13}}>회원가입</button>
-            <button onClick={()=>{setAuthMode("findpw");setMsg("");}}   style={{flex:1,padding:"8px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:8,cursor:"pointer",fontSize:13}}>비밀번호 찾기</button>
           </div>
+          <p style={{fontSize:12,color:"var(--color-text-secondary)",textAlign:"center",marginTop:12,lineHeight:1.6}}>
+            비밀번호를 잊으셨나요?<br/>
+            인사담당자(강수민, ksm@csquaredasset.com)에게 문의해주세요.
+          </p>
         </>)}
 
         {authMode==="register" && (<>
@@ -514,20 +491,7 @@ export default function App() {
           <button onClick={()=>{setAuthMode("login");setMsg("");}} style={{width:"100%",padding:"8px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:8,cursor:"pointer",fontSize:13}}>← 로그인으로</button>
         </>)}
 
-        {authMode==="findpw" && (<>
-          <h2 style={{fontSize:16,fontWeight:500,marginBottom:16}}>비밀번호 찾기</h2>
-          <div style={{marginBottom:10}}>
-            <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:4}}>이메일</label>
-            <input value={findForm.email} onChange={e=>setFindForm(p=>({...p,email:e.target.value}))} placeholder="가입한 이메일" style={{width:"100%",boxSizing:"border-box"}} />
-          </div>
-          <div style={{marginBottom:16}}>
-            <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:4}}>이름</label>
-            <input value={findForm.name} onChange={e=>setFindForm(p=>({...p,name:e.target.value}))} placeholder="가입한 이름" style={{width:"100%",boxSizing:"border-box"}} />
-          </div>
-          {msg&&<p style={{fontSize:12,color:msg.includes("발송")?"#1d9e75":"#e24b4a",marginBottom:8}}>{msg}</p>}
-          <button onClick={handleFindPw} style={{width:"100%",padding:"10px",background:"#ba7517",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:500,fontSize:14,marginBottom:8}}>임시 비밀번호 받기</button>
-          <button onClick={()=>{setAuthMode("login");setMsg("");}} style={{width:"100%",padding:"8px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:8,cursor:"pointer",fontSize:13}}>← 로그인으로</button>
-        </>)}
+
       </div>
     </div>
   );
