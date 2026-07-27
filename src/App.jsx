@@ -295,10 +295,13 @@ export default function App() {
     const annualLeave = u?.annualLeave ?? 15;
     const usedLeave   = u?.usedLeave   ?? 0;
     if(dayCount > (annualLeave - usedLeave)){ showNotif("잔여 연차가 부족합니다."); return; }
-    // 신청자=2단계 or 신청자=3단계인 경우 자동 step 올리기
+    // 신청자=팀장(2단계) 동일인이면 자동 통과
+    // 신청자=팀장=인사담당자 모두 동일인이면 바로 대표이사(3단계)로
     let autoStep = 1;
-    if(applyForm.approver2 === currentUser.email) autoStep = 2; // 2단계 자동통과
-    if(applyForm.approver2 === currentUser.email && HR_APPROVER === currentUser.email) autoStep = 3; // 2+3단계 자동통과
+    const isSelfManager = applyForm.approver2 === currentUser.email;
+    const isSelfHR      = HR_APPROVER === currentUser.email;
+    if(isSelfManager && isSelfHR) autoStep = 3; // 2+3단계 모두 자동통과 → 대표이사 대기
+    else if(isSelfManager)        autoStep = 2; // 2단계만 자동통과 → 인사담당자 대기
     await addDoc(collection(db,"requests"),{
       applicantEmail: currentUser.email,
       applicantName:  currentUser.name,
@@ -322,14 +325,24 @@ export default function App() {
   // ── 결재 ─────────────────────────────────────────────────────────────────
   const handleApprove = async (r) => {
     const ref = doc(db,"requests",r.id);
-    if(r.step===2){
-      // 3단계 결재자가 본인이면 자동 통과 → 바로 4단계
-      if(r.approver3 === currentUser.email) await updateDoc(ref,{step:4});
-      else await updateDoc(ref,{step:3});
+    const step = typeof r.step === "string" ? parseInt(r.step) : r.step;
+
+    // step 1 또는 2: 팀장 결재
+    if(step===1 || step===2){
+      // 인사담당자(approver3)가 본인이면 자동통과 → 바로 대표이사(step:4)
+      if(r.approver3 === currentUser.email){
+        await updateDoc(ref,{step:4});
+      } else {
+        await updateDoc(ref,{step:3});
+      }
     }
-    else if(r.step===3) await updateDoc(ref,{step:4});
-    else if(r.step===4){
-      await updateDoc(ref,{step:5,status:"approved",approvedAt:new Date().toISOString()});
+    // step 3: 인사담당자 결재 → 대표이사로
+    else if(step===3){
+      await updateDoc(ref,{step:4});
+    }
+    // step 4: 대표이사 최종 승인
+    else if(step===4){
+      await updateDoc(ref,{step:5, status:"approved", approvedAt:new Date().toISOString()});
       const ukey = emailToKey(r.applicantEmail);
       const u = users[r.applicantEmail];
       await updateDoc(doc(db,"users",ukey),{usedLeave:(u?.usedLeave||0)+r.dayCount});
@@ -383,24 +396,24 @@ export default function App() {
 
   const getMyApprovalList = () => {
     if(!currentUser) return [];
-    const email = currentUser.email;
+    const email      = currentUser.email;
     const isCeo      = email === CEO_EMAIL;
     const isHr       = email === HR_APPROVER;
     const isHrViewer = email === HR_VIEWER;
     const isManager  = Object.values(managerConfig).includes(email);
     return requests.filter(r=>{
-      // 본인 신청 건은 항상 표시
+      const s = typeof r.step==="string" ? parseInt(r.step) : r.step;
+      const done = r.status==="approved" || r.status==="rejected";
+      // 1. 본인 신청 건은 항상 표시
       if(r.applicantEmail === email) return true;
-      // 대표이사
-      if(isCeo && (r.step>=4 || r.status==="approved" || r.status==="rejected")) return true;
-      // 인사담당자 (3단계 결재자)
-      if(isHr && (r.step>=3 || r.status==="approved" || r.status==="rejected")) return true;
-      // 팀장 (2단계 결재자) — step>=2 또는 완료건
-      if(isManager && r.approver2===email && (r.step>=2 || r.status==="approved" || r.status==="rejected")) return true;
-      // 팀장이 step:1로 저장된 경우도 표시 (신청 직후)
-      if(isManager && r.approver2===email && r.step===1) return true;
-      // HR뷰어
-      if(isHrViewer && (r.status==="approved" || r.status==="rejected")) return true;
+      // 2. 팀장: approver2가 본인이고 step 1~2 또는 완료
+      if(isManager && r.approver2===email && (s===1 || s===2 || done)) return true;
+      // 3. 인사담당자: step 3 또는 완료
+      if(isHr && (s===3 || done)) return true;
+      // 4. 대표이사: step 4 또는 완료
+      if(isCeo && (s===4 || done)) return true;
+      // 5. HR뷰어: 완료건만
+      if(isHrViewer && done) return true;
       return false;
     });
   };
@@ -409,20 +422,28 @@ export default function App() {
     if(!currentUser) return false;
     const email = currentUser.email;
     if(r.applicantEmail === email) return false;
+    if(r.status !== "pending") return false;
+    const s = typeof r.step==="string" ? parseInt(r.step) : r.step;
     const isCeo     = email === CEO_EMAIL;
     const isHr      = email === HR_APPROVER;
     const isManager = Object.values(managerConfig).includes(email);
-    if(isCeo     && r.step===4) return true;
-    if(isHr      && r.step===3) return true;
-    if(isManager && r.approver2===email && r.step===2) return true;
+    if(isManager && r.approver2===email && (s===1 || s===2)) return true;
+    if(isHr && s===3) return true;
+    if(isCeo && s===4) return true;
     return false;
   };
 
   const getStepLabel = (step,status) => {
-    if(status==="approved") return {label:"승인완료",color:"#1d9e75"};
-    if(status==="rejected") return {label:"반려",    color:"#e24b4a"};
-    const m={1:"신청완료",2:"1차결재대기",3:"2차결재대기",4:"최종결재대기"};
-    return {label:m[step]||"진행중",color:"#378add"};
+    if(status==="approved") return {label:"승인완료",  color:"#1d9e75"};
+    if(status==="rejected") return {label:"반려",      color:"#e24b4a"};
+    const m={
+      1:"팀장결재대기",
+      2:"팀장결재대기",
+      3:"인사담당자결재대기",
+      4:"대표이사결재대기",
+      5:"승인완료"
+    };
+    return {label:m[step]||"진행중", color:"#378add"};
   };
 
   const typeLabel = t => t==="half"?"반차(0.5일)":"연차(1일)";
