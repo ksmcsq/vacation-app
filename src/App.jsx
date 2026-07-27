@@ -110,6 +110,64 @@ th{background:#f5f5f5;font-weight:500;width:130px;text-align:left;color:#333}
 }
 
 // ─── 달력 ─────────────────────────────────────────────────────────────────────
+function UserCard({email, u, canEdit, editLeave, setEditLeave, db, emailToKey, showNotif, setTab, docFn, updateDocFn}) {
+  const rem = (u.annualLeave||0)-(u.usedLeave||0);
+  const keyA = email+":annual";
+  const keyU = email+":used";
+  return (
+    <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"12px 14px"}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:4}}>
+        <div>
+          <span style={{fontWeight:500,fontSize:14}}>{u.name}</span>
+          <span style={{marginLeft:6,fontSize:11,padding:"2px 7px",background:"var(--color-background-secondary)",borderRadius:10,color:"var(--color-text-secondary)"}}>{u.position||"-"}</span>
+          <span style={{marginLeft:6,fontSize:12,color:"var(--color-text-secondary)"}}>{u.dept}</span>
+        </div>
+        <span style={{fontSize:10,color:"var(--color-text-secondary)"}}>{email}</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+        <div style={{background:"var(--color-background-secondary)",borderRadius:8,padding:"8px",textAlign:"center"}}>
+          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>부여연차</div>
+          {canEdit && editLeave[keyA]!==undefined ? (
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              <input type="number" value={editLeave[keyA]} onChange={e=>setEditLeave(p=>({...p,[keyA]:e.target.value}))} style={{width:"100%",padding:"3px",textAlign:"center",boxSizing:"border-box"}} min={0} />
+              <div style={{display:"flex",gap:3}}>
+                <button onClick={async()=>{const val=parseInt(editLeave[keyA]);if(isNaN(val)||val<0){showNotif("올바른 값");return;}await updateDocFn(docFn(db,"users",emailToKey(email)),{annualLeave:val});setEditLeave(p=>{const n={...p};delete n[keyA];return n;});showNotif("저장!");}} style={{flex:1,padding:"3px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:10}}>저장</button>
+                <button onClick={()=>setEditLeave(p=>{const n={...p};delete n[keyA];return n;})} style={{flex:1,padding:"3px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10}}>취소</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{fontSize:16,fontWeight:500,color:"#378add"}}>{u.annualLeave||0}일</div>
+              {canEdit && <button onClick={()=>setEditLeave(p=>({...p,[keyA]:u.annualLeave||0}))} style={{marginTop:2,padding:"2px 6px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10,color:"var(--color-text-secondary)"}}>수정</button>}
+            </div>
+          )}
+        </div>
+        <div style={{background:"var(--color-background-secondary)",borderRadius:8,padding:"8px",textAlign:"center"}}>
+          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>사용연차</div>
+          {canEdit && editLeave[keyU]!==undefined ? (
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              <input type="number" value={editLeave[keyU]} onChange={e=>setEditLeave(p=>({...p,[keyU]:e.target.value}))} style={{width:"100%",padding:"3px",textAlign:"center",boxSizing:"border-box"}} min={0} />
+              <div style={{display:"flex",gap:3}}>
+                <button onClick={async()=>{const val=parseInt(editLeave[keyU]);if(isNaN(val)||val<0){showNotif("올바른 값");return;}await updateDocFn(docFn(db,"users",emailToKey(email)),{usedLeave:val});setEditLeave(p=>{const n={...p};delete n[keyU];return n;});showNotif("저장!");}} style={{flex:1,padding:"3px",background:"#ba7517",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:10}}>저장</button>
+                <button onClick={()=>setEditLeave(p=>{const n={...p};delete n[keyU];return n;})} style={{flex:1,padding:"3px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10}}>취소</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <button onClick={()=>setTab("inbox")} style={{background:"none",border:"none",cursor:"pointer",color:"#ba7517",fontWeight:500,fontSize:16,padding:0,display:"block",width:"100%"}}>{u.usedLeave||0}일</button>
+              {canEdit && <button onClick={()=>setEditLeave(p=>({...p,[keyU]:u.usedLeave||0}))} style={{marginTop:2,padding:"2px 6px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10,color:"var(--color-text-secondary)"}}>수정</button>}
+            </div>
+          )}
+        </div>
+        <div style={{background:"var(--color-background-secondary)",borderRadius:8,padding:"8px",textAlign:"center"}}>
+          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>잔여연차</div>
+          <div style={{fontSize:16,fontWeight:500,color:rem<3?"#e24b4a":"#1d9e75"}}>{rem}일</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Calendar({ selectedDates, onToggleDate }) {
   const today = new Date();
   const [vy, setVy] = useState(today.getFullYear());
@@ -788,76 +846,18 @@ export default function App() {
                     style={{width:"100%",boxSizing:"border-box",padding:"8px 12px",fontSize:13}}
                   />
                 </div>
-                <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",overflow:"hidden",marginBottom:24}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                    <thead>
-                      <tr style={{background:"var(--color-background-secondary)"}}>
-                        {["이름","직책","부서","이메일","부여연차","사용연차","잔여연차"].map(h=>(
-                          <th key={h} style={{padding:"10px 12px",textAlign:"left",fontWeight:500,fontSize:12,color:"var(--color-text-secondary)",borderBottom:"0.5px solid var(--color-border-tertiary)"}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(users).map(([email,u])=>{
-                        const rem = (u.annualLeave||0)-(u.usedLeave||0);
-                        const keyA = email+":annual";
-                        const keyU = email+":used";
-                        return (
-                          <tr key={email} style={{borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
-                            <td style={{padding:"10px 12px",fontWeight:500}}>{u.name}</td>
-                            <td style={{padding:"10px 12px",color:"var(--color-text-secondary)"}}>{u.position||"-"}</td>
-                            <td style={{padding:"10px 12px",color:"var(--color-text-secondary)"}}>{u.dept}</td>
-                            <td style={{padding:"10px 12px",color:"var(--color-text-secondary)",fontSize:11}}>{email}</td>
-                            {/* 부여연차 */}
-                            <td style={{padding:"8px 12px"}}>
-                              {isHRUser && editLeave[keyA]!==undefined ? (
-                                <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                                  <input type="number" value={editLeave[keyA]} onChange={e=>setEditLeave(p=>({...p,[keyA]:e.target.value}))} style={{width:55,padding:"3px 5px"}} min={0} />
-                                  <button onClick={async()=>{
-                                    const val=parseInt(editLeave[keyA]);
-                                    if(isNaN(val)||val<0){showNotif("올바른 값을 입력해주세요.");return;}
-                                    await updateDoc(doc(db,"users",emailToKey(email)),{annualLeave:val});
-                                    setEditLeave(p=>{const n={...p};delete n[keyA];return n;});
-                                    showNotif("부여연차 수정 완료!");
-                                  }} style={{padding:"3px 7px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:11}}>저장</button>
-                                  <button onClick={()=>setEditLeave(p=>{const n={...p};delete n[keyA];return n;})} style={{padding:"3px 7px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:11}}>취소</button>
-                                </div>
-                              ) : (
-                                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                  <span style={{color:"#378add",fontWeight:500}}>{u.annualLeave||0}일</span>
-                                  {isHRUser && <button onClick={()=>setEditLeave(p=>({...p,[keyA]:u.annualLeave||0}))} style={{padding:"2px 6px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10,color:"var(--color-text-secondary)"}}>수정</button>}
-                                </div>
-                              )}
-                            </td>
-                            {/* 사용연차 */}
-                            <td style={{padding:"8px 12px"}}>
-                              {isHRUser && editLeave[keyU]!==undefined ? (
-                                <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                                  <input type="number" value={editLeave[keyU]} onChange={e=>setEditLeave(p=>({...p,[keyU]:e.target.value}))} style={{width:55,padding:"3px 5px"}} min={0} />
-                                  <button onClick={async()=>{
-                                    const val=parseInt(editLeave[keyU]);
-                                    if(isNaN(val)||val<0){showNotif("올바른 값을 입력해주세요.");return;}
-                                    await updateDoc(doc(db,"users",emailToKey(email)),{usedLeave:val});
-                                    setEditLeave(p=>{const n={...p};delete n[keyU];return n;});
-                                    showNotif("사용연차 수정 완료!");
-                                  }} style={{padding:"3px 7px",background:"#ba7517",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:11}}>저장</button>
-                                  <button onClick={()=>setEditLeave(p=>{const n={...p};delete n[keyU];return n;})} style={{padding:"3px 7px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:11}}>취소</button>
-                                </div>
-                              ) : (
-                                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                  <button onClick={()=>setTab("inbox")} style={{background:"none",border:"none",cursor:"pointer",color:"#ba7517",fontWeight:500,textDecoration:"underline",fontSize:13,padding:0}}>{u.usedLeave||0}일</button>
-                                  {isHRUser && <button onClick={()=>setEditLeave(p=>({...p,[keyU]:u.usedLeave||0}))} style={{padding:"2px 6px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10,color:"var(--color-text-secondary)"}}>수정</button>}
-                                </div>
-                              )}
-                            </td>
-                            <td style={{padding:"10px 12px",color:rem<3?"#e24b4a":"#1d9e75",fontWeight:500}}>{rem}일</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
+                  {searchResult.length>0 && (<>
+                    {searchResult.map(([email,u])=>(
+                      <UserCard key={email} email={email} u={u} canEdit={canEdit} editLeave={editLeave} setEditLeave={setEditLeave} db={db} emailToKey={emailToKey} showNotif={showNotif} setTab={setTab} docFn={doc} updateDocFn={updateDoc} />
+                    ))}
+                    <div style={{padding:"4px 8px",fontSize:11,color:"var(--color-text-secondary)"}}>── 전체 직원 ──</div>
+                  </>)}
+                  {otherUsers.map(([email,u])=>(
+                    <UserCard key={email} email={email} u={u} canEdit={canEdit} editLeave={editLeave} setEditLeave={setEditLeave} db={db} emailToKey={emailToKey} showNotif={showNotif} setTab={setTab} docFn={doc} updateDocFn={updateDoc} />
+                  ))}
                 </div>
-                {/* 팀장 이메일 관리 — 인사담당자만 */}
+                                {/* 팀장 이메일 관리 — 인사담당자만 */}
                 {isHRUser && (
                 <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1.25rem",marginBottom:16}}>
                   <h3 style={{fontSize:15,fontWeight:500,marginBottom:12}}>팀장 이메일 관리</h3>
