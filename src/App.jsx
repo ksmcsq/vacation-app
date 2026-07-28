@@ -284,12 +284,23 @@ export default function App() {
     return unsub;
   },[]);
 
-  // ── 결재 목록 실시간 구독 ────────────────────────────────────────────────
+  // ── 결재 목록 실시간 구독 (올해 데이터만) ──────────────────────────────────
   useEffect(()=>{
-    const q = query(collection(db,"requests"), orderBy("createdAt","desc"));
+    const thisYear = new Date().getFullYear();
+    const startOfYear = new Date(thisYear, 0, 1).toISOString();
+    const q = query(
+      collection(db,"requests"),
+      orderBy("createdAt","desc")
+    );
     const unsub = onSnapshot(
       q,
-      snap=>{ setRequests(snap.docs.map(d=>({...d.data(), id:d.id}))); setNetError(false); },
+      snap=>{
+        const thisYearData = snap.docs
+          .map(d=>({...d.data(), id:d.id}))
+          .filter(r => r.createdAt && r.createdAt >= startOfYear);
+        setRequests(thisYearData);
+        setNetError(false);
+      },
       err=>{ console.error(err); setNetError(true); }
     );
     return unsub;
@@ -847,11 +858,33 @@ export default function App() {
             : allUsers;
 
           const handleResetAllLeave = async () => {
-            if(!window.confirm("전직원 사용연차를 0으로 초기화하시겠습니까?\n(부여연차는 유지됩니다)")) return;
+            const thisYear = new Date().getFullYear();
+            if(!window.confirm(`전직원 사용연차를 0으로 초기화하시겠습니까?\n${thisYear-1}년도 결재 데이터도 함께 삭제됩니다.\n(부여연차는 유지됩니다)`)) return;
+            // 사용연차 초기화
             for(const [email] of allUsers){
               await updateDoc(doc(db,"users",emailToKey(email)),{usedLeave:0});
             }
-            showNotif("전직원 연차가 초기화되었습니다!");
+            // 전년도 데이터 삭제
+            const prevYearEnd = new Date(thisYear-1, 11, 31, 23, 59, 59).toISOString();
+            const prevYearStart = new Date(thisYear-1, 0, 1).toISOString();
+            try {
+              const oldSnap = await getDocs(
+                query(collection(db,"requests"),
+                  orderBy("createdAt","asc")
+                )
+              );
+              let deletedCount = 0;
+              for(const d of oldSnap.docs){
+                const createdAt = d.data().createdAt||"";
+                if(createdAt >= prevYearStart && createdAt <= prevYearEnd){
+                  await deleteDoc(doc(db,"requests",d.id));
+                  deletedCount++;
+                }
+              }
+              showNotif(`연차 초기화 완료! ${thisYear-1}년 데이터 ${deletedCount}건 삭제됨`);
+            } catch(e) {
+              showNotif("연차 초기화 완료! (구데이터 삭제 중 오류)");
+            }
           };
 
           const renderUserRow = ([email,u]) => {
@@ -919,7 +952,7 @@ export default function App() {
             <div style={{background:"#ffffff",border:"1px solid #e8e5e0",borderRadius:4,padding:"1.25rem",marginBottom:20,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                 <h3 style={{fontSize:14,fontWeight:600,margin:0,color:"#2C2C2C"}}>
-                  📅 {showAll ? "전직원" : currentUser?.dept} 휴가 캘린더
+                  📅 {showAll ? "전직원" : currentUser?.dept} 휴가 캘린더 ({new Date().getFullYear()})
                 </h3>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={prevMonth} style={{background:"none",border:"0.5px solid #e8e5e0",borderRadius:4,cursor:"pointer",padding:"4px 10px",fontSize:14}}>‹</button>
