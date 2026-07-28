@@ -204,6 +204,7 @@ export default function App() {
   const [hrViewerEmail, setHrViewerEmail] = useState("jsw@csquaredasset.com");
   const [hrViewerInput, setHrViewerInput] = useState("");
   const [leaveSearch, setLeaveSearch] = useState("");
+  const [calView, setCalView] = useState({year: new Date().getFullYear(), month: new Date().getMonth()});
   const [adminPwReset, setAdminPwReset] = useState({email:"",newPw:"",confirm:""});
 
   const showNotif = (text,ms=2800) => { setNotif(text); setTimeout(()=>setNotif(""),ms); };
@@ -358,8 +359,8 @@ export default function App() {
     let autoStep = 1;
     const isSelfManager = applyForm.approver2 === currentUser.email;
     const isSelfHR      = HR_APPROVER === currentUser.email;
-    if(isSelfManager && isSelfHR) autoStep = 3; // 2+3단계 모두 자동통과 → 대표이사 대기
-    else if(isSelfManager)        autoStep = 2; // 2단계만 자동통과 → 인사담당자 대기
+    if(isSelfManager && isSelfHR) autoStep = 4; // 2+3단계 모두 자동통과 → 대표이사 대기(step4)
+    else if(isSelfManager)        autoStep = 3; // 2단계 자동통과 → 인사담당자 대기(step3)
     await addDoc(collection(db,"requests"),{
       applicantEmail: currentUser.email,
       applicantName:  currentUser.name,
@@ -793,6 +794,40 @@ export default function App() {
           const isCEOUser = myEmail === CEO_EMAIL;
           const isAdmin   = isHRUser || isCEOUser;
           const canEdit   = isHRUser;
+          const isMgmtDept = currentUser?.dept === "경영지원팀";
+          const showAll = isCEOUser || isMgmtDept;
+
+          // 달력에 표시할 승인된 휴가 필터
+          const approvedRequests = requests.filter(r => {
+            if(r.status !== "approved") return false;
+            if(showAll) return true;
+            return users[r.applicantEmail]?.dept === currentUser?.dept;
+          });
+
+          // 달력 날짜별 휴가 맵핑
+          const calendarMap = {};
+          approvedRequests.forEach(r => {
+            (r.dates||[]).forEach(d => {
+              if(!calendarMap[d]) calendarMap[d] = [];
+              calendarMap[d].push({
+                name: r.applicantName,
+                type: r.type,
+                color: r.applicantEmail === myEmail ? "#1d9e75" : "#2E6DA4"
+              });
+            });
+          });
+
+          const calDays = getDaysInMonth(calView.year, calView.month);
+          const calFirst = getFirstDay(calView.year, calView.month);
+          const calCells = [...Array(calFirst).fill(null), ...Array.from({length:calDays},(_,i)=>i+1)];
+          const prevMonth = () => {
+            if(calView.month===0) setCalView({year:calView.year-1, month:11});
+            else setCalView({...calView, month:calView.month-1});
+          };
+          const nextMonth = () => {
+            if(calView.month===11) setCalView({year:calView.year+1, month:0});
+            else setCalView({...calView, month:calView.month+1});
+          };
 
           // 검색 필터
           const allUsers = Object.entries(users);
@@ -879,6 +914,57 @@ export default function App() {
           return (
           <div>
             <h2 style={{fontSize:16,fontWeight:600,marginBottom:16,color:"#2C2C2C",letterSpacing:"0.3px",paddingBottom:10,borderBottom:"2px solid #1d9e75"}}>연차관리</h2>
+
+            {/* 팀 캘린더 */}
+            <div style={{background:"#ffffff",border:"1px solid #e8e5e0",borderRadius:4,padding:"1.25rem",marginBottom:20,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <h3 style={{fontSize:14,fontWeight:600,margin:0,color:"#2C2C2C"}}>
+                  📅 {showAll ? "전직원" : currentUser?.dept} 휴가 캘린더
+                </h3>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <button onClick={prevMonth} style={{background:"none",border:"0.5px solid #e8e5e0",borderRadius:4,cursor:"pointer",padding:"4px 10px",fontSize:14}}>‹</button>
+                  <span style={{fontSize:13,fontWeight:500,minWidth:80,textAlign:"center"}}>{calView.year}년 {calView.month+1}월</span>
+                  <button onClick={nextMonth} style={{background:"none",border:"0.5px solid #e8e5e0",borderRadius:4,cursor:"pointer",padding:"4px 10px",fontSize:14}}>›</button>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+                {["일","월","화","수","목","금","토"].map((w,i)=>(
+                  <div key={w} style={{textAlign:"center",fontSize:11,fontWeight:600,padding:"6px 0",color:i===0?"#e24b4a":i===6?"#2E6DA4":"#888"}}>{w}</div>
+                ))}
+                {calCells.map((d,i)=>{
+                  const dateKey = d ? `${calView.year}-${String(calView.month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}` : null;
+                  const events = dateKey ? (calendarMap[dateKey]||[]) : [];
+                  const isToday = dateKey === new Date().toISOString().slice(0,10);
+                  return (
+                    <div key={i} style={{
+                      minHeight:52,padding:"4px",borderRadius:4,
+                      background: isToday ? "#EAF3EE" : "var(--color-background-secondary)",
+                      border: isToday ? "1.5px solid #1d9e75" : "0.5px solid #f0ede8"
+                    }}>
+                      {d && <div style={{fontSize:11,fontWeight:isToday?600:400,color:isToday?"#1d9e75":i%7===0?"#e24b4a":i%7===6?"#2E6DA4":"#555",marginBottom:2}}>{d}</div>}
+                      {events.slice(0,2).map((ev,ei)=>(
+                        <div key={ei} style={{fontSize:10,background:ev.color+"22",color:ev.color,borderRadius:2,padding:"1px 3px",marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500}}>
+                          {ev.name} {ev.type==="half"?"(반)":""}
+                        </div>
+                      ))}
+                      {events.length>2 && <div style={{fontSize:9,color:"#888"}}>+{events.length-2}명</div>}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 범례 */}
+              <div style={{display:"flex",gap:12,marginTop:10,fontSize:11,color:"#888"}}>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <div style={{width:10,height:10,borderRadius:2,background:"#1d9e7522"}}></div>내 휴가
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <div style={{width:10,height:10,borderRadius:2,background:"#2E6DA422"}}></div>팀원 휴가
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <div style={{width:10,height:10,borderRadius:2,background:"#EAF3EE",border:"1.5px solid #1d9e75"}}></div>오늘
+                </div>
+              </div>
+            </div>
             {isAdmin ? (
               <div>
                 {/* 상단: 설명 + 초기화 버튼 */}
