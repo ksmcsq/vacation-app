@@ -153,6 +153,7 @@ function Calendar({ selectedDates, onToggleDate }) {
 // ─── 메인 앱 ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [loading,   setLoading]   = useState(true);
+  const [netError,  setNetError]  = useState(false);
   const [users,     setUsers]     = useState({});
   const [requests,  setRequests]  = useState([]);
   const [managerConfig, setManagerConfig] = useState(DEFAULT_MANAGER_CONFIG);
@@ -206,20 +207,27 @@ export default function App() {
 
   // ── 유저 목록 실시간 구독 ────────────────────────────────────────────────
   useEffect(()=>{
-    const unsub = onSnapshot(collection(db,"users"), snap=>{
-      const data={};
-      snap.forEach(d=>{ data[d.data().email]=d.data(); });
-      setUsers(data);
-    });
+    const unsub = onSnapshot(
+      collection(db,"users"),
+      snap=>{
+        const data={};
+        snap.forEach(d=>{ data[d.data().email]=d.data(); });
+        setUsers(data);
+        setNetError(false);
+      },
+      err=>{ console.error(err); setNetError(true); }
+    );
     return unsub;
   },[]);
 
   // ── 결재 목록 실시간 구독 ────────────────────────────────────────────────
   useEffect(()=>{
     const q = query(collection(db,"requests"), orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q, snap=>{
-      setRequests(snap.docs.map(d=>({...d.data(), id:d.id})));
-    });
+    const unsub = onSnapshot(
+      q,
+      snap=>{ setRequests(snap.docs.map(d=>({...d.data(), id:d.id}))); setNetError(false); },
+      err=>{ console.error(err); setNetError(true); }
+    );
     return unsub;
   },[]);
 
@@ -301,7 +309,7 @@ export default function App() {
       approvedAt: null,
     });
     setApplyForm({dates:[],type:"annual",approver2:""});
-    showNotif("휴가 신청이 완료되었습니다.");
+    showNotif("✅ 휴가 신청이 완료되었습니다!");
   };
 
   // ── 결재 ─────────────────────────────────────────────────────────────────
@@ -432,15 +440,30 @@ export default function App() {
 
   // ── 로딩 ──────────────────────────────────────────────────────────────────
   if(loading) return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--color-background-tertiary)"}}>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#F4F3F0",flexDirection:"column",gap:16}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:32,marginBottom:12}}>🏢</div>
-        <p style={{fontSize:14,color:"var(--color-text-secondary)"}}>씨스퀘어자산운용(주) 휴가관리 시스템 로딩 중...</p>
+        <div style={{fontSize:36,marginBottom:12}}>🏢</div>
+        <div style={{fontWeight:600,fontSize:16,color:"#2C2C2C",marginBottom:4}}>씨스퀘어자산운용(주)</div>
+        <div style={{fontSize:13,color:"#1d9e75",fontWeight:500,marginBottom:16}}>휴가관리 시스템</div>
+        <div style={{display:"flex",gap:6,justifyContent:"center"}}>
+          {[0,1,2].map(i=>(
+            <div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#1d9e75",opacity:0.3,animation:`pulse 1.2s ${i*0.4}s infinite`}} />
+          ))}
+        </div>
       </div>
+      <style>{`@keyframes pulse{0%,100%{opacity:0.3}50%{opacity:1}}`}</style>
     </div>
   );
 
   const cs = { minHeight:"100vh", background:"#F4F3F0", fontFamily:"'Inter', 'Pretendard', -apple-system, sans-serif", color:"#2C2C2C" };
+  const mobileStyle = `
+    * { box-sizing: border-box; }
+    input, select, button { font-family: inherit; }
+    input, select { font-size: 16px !important; }
+    @media (max-width: 480px) {
+      .desktop-only { display: none !important; }
+    }
+  `;
 
   // ── 로그인 화면 ───────────────────────────────────────────────────────────
   if(page==="login") return (
@@ -462,7 +485,7 @@ export default function App() {
             <input type="password" value={loginForm.password} onChange={e=>setLoginForm(p=>({...p,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="비밀번호" style={{width:"100%",boxSizing:"border-box"}} />
           </div>
           {msg&&<p style={{fontSize:12,color:"#e24b4a",marginBottom:8}}>{msg}</p>}
-          <button onClick={handleLogin} style={{width:"100%",padding:"11px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontWeight:500,fontSize:14,marginBottom:12,letterSpacing:"0.5px"}}>로그인</button>
+          <button onClick={handleLogin} style={{width:"100%",padding:"14px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontWeight:500,fontSize:15,marginBottom:12,letterSpacing:"0.5px"}}>로그인</button>
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>{setAuthMode("register");setMsg("");}} style={{flex:1,padding:"8px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:8,cursor:"pointer",fontSize:13}}>회원가입</button>
           </div>
@@ -509,9 +532,16 @@ export default function App() {
 
   return (
     <div style={cs}>
+      <style>{mobileStyle}</style>
       {notif&&(
         <div style={{position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:"#1d9e75",color:"#fff",padding:"10px 20px",borderRadius:8,zIndex:9999,fontSize:13,fontWeight:500,boxShadow:"0 2px 12px rgba(0,0,0,0.15)"}}>
           {notif}
+        </div>
+      )}
+      {netError&&(
+        <div style={{background:"#fff3cd",borderBottom:"1px solid #ffc107",padding:"8px 16px",textAlign:"center",fontSize:13,color:"#856404",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          ⚠️ 네트워크 연결이 불안정합니다. 인터넷 연결을 확인해주세요.
+          <button onClick={()=>window.location.reload()} style={{fontSize:12,padding:"2px 10px",background:"#856404",color:"#fff",border:"none",borderRadius:4,cursor:"pointer"}}>새로고침</button>
         </div>
       )}
 
@@ -557,7 +587,7 @@ export default function App() {
               {[["부여 연차",annualLeave,"#2E6DA4"],["사용 연차",usedLeave,"#ba7517"],["잔여 연차",remainingLeave,"#1d9e75"]].map(([l,v,c])=>(
                 <div key={l} style={{background:"#ffffff",border:"1px solid #e8e5e0",borderRadius:4,padding:"0.75rem",textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
                   <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>{l}</div>
-                  <div style={{fontSize:20,fontWeight:500,color:c}}>{v}일</div>
+                  <div style={{fontSize:22,fontWeight:600,color:c}}>{v}일</div>
                 </div>
               ))}
             </div>
@@ -628,7 +658,10 @@ export default function App() {
           <div>
             <h2 style={{fontSize:16,fontWeight:600,marginBottom:16,color:"#2C2C2C",letterSpacing:"0.3px",paddingBottom:10,borderBottom:"2px solid #1d9e75"}}>결재함</h2>
             {myList.length===0 ? (
-              <div style={{textAlign:"center",padding:"3rem",color:"var(--color-text-secondary)",fontSize:14}}>결재함이 비어있습니다.</div>
+              <div style={{textAlign:"center",padding:"3rem",color:"#999",fontSize:14}}>
+                <div style={{fontSize:32,marginBottom:12}}>📭</div>
+                <div>아직 결재할 항목이 없습니다.</div>
+              </div>
             ) : (
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {myList.map(r=>{
