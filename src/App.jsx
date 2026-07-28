@@ -142,7 +142,7 @@ th{background:#f5f5f5;font-weight:500;width:130px;text-align:left;color:#333}
 // ─── 달력 ─────────────────────────────────────────────────────────────────────
 // UserCard는 App 내부에서 렌더링
 
-function Calendar({ selectedDates, onToggleDate }) {
+function Calendar({ selectedDates, dateMap={}, onToggleDate }) {
   const today = new Date();
   const [vy, setVy] = useState(today.getFullYear());
   const [vm, setVm] = useState(today.getMonth());
@@ -150,7 +150,8 @@ function Calendar({ selectedDates, onToggleDate }) {
   const first = getFirstDay(vy,vm);
   const cells = [...Array(first).fill(null), ...Array.from({length:days},(_,i)=>i+1)];
   const isSelected = d => selectedDates.includes(`${vy}-${String(vm+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
-  const toggle = d => { if(!d) return; onToggleDate(`${vy}-${String(vm+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`); };
+  const getKey = d => `${vy}-${String(vm+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const toggle = d => { if(!d) return; onToggleDate(getKey(d)); };
   const prev = () => { if(vm===0){setVy(y=>y-1);setVm(11);}else setVm(m=>m-1); };
   const next = () => { if(vm===11){setVy(y=>y+1);setVm(0);}else setVm(m=>m+1); };
   return (
@@ -167,10 +168,17 @@ function Calendar({ selectedDates, onToggleDate }) {
         {cells.map((d,i)=>(
           <div key={i} onClick={()=>toggle(d)} style={{
             padding:"6px 2px",fontSize:13,borderRadius:6,cursor:d?"pointer":"default",
-            background:d&&isSelected(d)?"#1d9e75":"transparent",
-            color:d&&isSelected(d)?"#fff":d?"var(--color-text-primary)":"transparent",
-            fontWeight:d&&isSelected(d)?500:400,
-          }}>{d||""}</div>
+            background: d && getKey(d) && dateMap[getKey(d)]==="half" ? "#FF8F00" :
+                       d && isSelected(d) ? "#1d9e75" : "transparent",
+            color: d && isSelected(d) ? "#fff" : d ? "var(--color-text-primary)" : "transparent",
+            fontWeight: d && isSelected(d) ? 500 : 400,
+            position:"relative"
+          }}>
+            {d||""}
+            {d && dateMap[getKey(d)]==="half" && (
+              <span style={{position:"absolute",top:1,right:1,fontSize:8,lineHeight:1}}>½</span>
+            )}
+          </div>
         ))}
       </div>
       {selectedDates.length>0&&(
@@ -198,7 +206,7 @@ export default function App() {
   const [loginForm, setLoginForm] = useState({email:"",password:""});
   const [regForm,   setRegForm]   = useState({email:"",name:"",dept:"자산운용파트",position:"팀원",password:"",confirm:""});
   const [findForm,  setFindForm]  = useState({email:"",name:""});
-  const [applyForm, setApplyForm] = useState({dates:[],type:"annual",approver2:""});
+  const [applyForm, setApplyForm] = useState({dateMap:{},approver2:""});
   const [myInfoForm,setMyInfoForm]= useState({position:"",oldPw:"",newPw:"",confirmPw:""});
   const [editLeave, setEditLeave] = useState({});
   const [hrViewerEmail, setHrViewerEmail] = useState("jsw@csquaredasset.com");
@@ -358,9 +366,10 @@ export default function App() {
 
   // ── 휴가 신청 ─────────────────────────────────────────────────────────────
   const handleApply = async () => {
-    if(!applyForm.dates.length){ showNotif("휴가 날짜를 선택해주세요."); return; }
+    const dateEntries = Object.entries(applyForm.dateMap);
+    if(!dateEntries.length){ showNotif("휴가 날짜를 선택해주세요."); return; }
     if(!applyForm.approver2){ showNotif("2단계 결재자를 선택해주세요."); return; }
-    const dayCount = applyForm.type==="half" ? applyForm.dates.length*0.5 : applyForm.dates.length;
+    const dayCount = dateEntries.reduce((sum,[,t])=> sum + (t==="half"?0.5:1), 0);
     const u = users[currentUser.email];
     const annualLeave = u?.annualLeave ?? 15;
     const usedLeave   = u?.usedLeave   ?? 0;
@@ -376,8 +385,9 @@ export default function App() {
       applicantEmail: currentUser.email,
       applicantName:  currentUser.name,
       dept:           currentUser.dept,
-      dates:          [...applyForm.dates].sort(),
-      type:           applyForm.type,
+      dates:          Object.keys(applyForm.dateMap).sort(),
+      dateMap:        applyForm.dateMap,
+      type:           Object.values(applyForm.dateMap).every(t=>t==="half") ? "half" : Object.values(applyForm.dateMap).every(t=>t==="annual") ? "annual" : "mixed",
       dayCount,
       approver1: currentUser.email,
       approver2: applyForm.approver2,
@@ -388,7 +398,7 @@ export default function App() {
       createdAt: new Date().toISOString(),
       approvedAt: null,
     });
-    setApplyForm({dates:[],type:"annual",approver2:""});
+    setApplyForm({dateMap:{},approver2:""});
     showNotif("✅ 휴가 신청이 완료되었습니다!");
   };
 
@@ -516,7 +526,7 @@ export default function App() {
     return {label:m[step]||"진행중", color:"#2E6DA4"};
   };
 
-  const typeLabel = t => t==="half"?"반차(0.5일)":"연차(1일)";
+  const typeLabel = t => t==="half"?"반차(0.5일)":t==="mixed"?"연차+반차 혼합":"연차(1일)";
 
   // ── 로딩 ──────────────────────────────────────────────────────────────────
   if(loading) return (
@@ -682,22 +692,40 @@ export default function App() {
                   <input value={cu?.name||""} readOnly style={{width:"100%",boxSizing:"border-box",background:"var(--color-background-secondary)"}} />
                 </div>
               </div>
-              <div style={{marginBottom:16}}>
-                <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:8}}>휴가 종류 <span style={{color:"#e24b4a"}}>*</span></label>
-                <div style={{display:"flex",gap:16}}>
-                  {[["annual","연차 (1일 차감)"],["half","반차 (0.5일 차감)"]].map(([v,l])=>(
-                    <label key={v} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:14}}>
-                      <input type="radio" name="lt" value={v} checked={applyForm.type===v} onChange={()=>setApplyForm(p=>({...p,type:v}))} />{l}
-                    </label>
-                  ))}
-                </div>
+              <div style={{marginBottom:8,padding:"8px 12px",background:"#EAF3EE",borderRadius:4,fontSize:12,color:"#1d9e75"}}>
+                💡 날짜를 클릭하면 <strong>연차</strong>, 한 번 더 클릭하면 <strong>반차</strong>, 다시 클릭하면 <strong>취소</strong>예요.
               </div>
               <div style={{marginBottom:16}}>
                 <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:8}}>휴가 날짜 선택 <span style={{color:"#e24b4a"}}>*</span> <span style={{color:"var(--color-text-secondary)"}}>(복수 선택 가능)</span></label>
-                <Calendar selectedDates={applyForm.dates} onToggleDate={key=>setApplyForm(p=>({...p,dates:p.dates.includes(key)?p.dates.filter(d=>d!==key):[...p.dates,key]}))} />
-                {applyForm.dates.length>0&&(
-                  <p style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:6}}>선택 {applyForm.dates.length}일 → 차감 <strong>{applyForm.type==="half"?applyForm.dates.length*0.5:applyForm.dates.length}일</strong></p>
-                )}
+                <Calendar
+                  selectedDates={Object.keys(applyForm.dateMap)}
+                  dateMap={applyForm.dateMap}
+                  onToggleDate={key=>setApplyForm(p=>{
+                    const m = {...p.dateMap};
+                    if(!m[key]) m[key]="annual";           // 첫클릭: 연차
+                    else if(m[key]==="annual") m[key]="half"; // 두번째: 반차
+                    else delete m[key];                     // 세번째: 취소
+                    return {...p, dateMap:m};
+                  })}
+                />
+                {Object.keys(applyForm.dateMap).length>0&&(()=>{
+                  const entries = Object.entries(applyForm.dateMap).sort();
+                  const total = entries.reduce((s,[,t])=>s+(t==="half"?0.5:1),0);
+                  return (
+                    <div style={{marginTop:8}}>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:4}}>
+                        {entries.map(([d,t])=>(
+                          <span key={d} style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:t==="half"?"#FFF3E0":"#EAF3EE",color:t==="half"?"#E65100":"#1d9e75",fontWeight:500}}>
+                            {d} {t==="half"?"(반차)":"(연차)"}
+                          </span>
+                        ))}
+                      </div>
+                      <p style={{fontSize:12,color:"var(--color-text-secondary)",margin:0}}>
+                        총 <strong style={{color:"#2C2C2C"}}>{entries.length}일</strong> 선택 → 차감 <strong style={{color:"#1d9e75"}}>{total}일</strong>
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
               <div style={{marginBottom:20,padding:"1rem",background:"#F8F7F5",borderRadius:4,border:"1px solid #e8e5e0"}}>
                 <h3 style={{fontSize:14,fontWeight:500,marginBottom:12}}>결재라인</h3>
@@ -757,7 +785,10 @@ export default function App() {
                             <span style={{fontSize:11,padding:"2px 8px",borderRadius:12,background:si.color+"22",color:si.color,fontWeight:500}}>{si.label}</span>
                           </div>
                           <div style={{fontSize:13,color:"var(--color-text-secondary)",marginBottom:4}}>
-                            📅 {(r.dates||[]).join(", ")} &nbsp;|&nbsp; {typeLabel(r.type)} &nbsp;|&nbsp; <strong style={{color:"var(--color-text-primary)"}}>{r.dayCount}일</strong>
+                            📅 {(r.dates||[]).map(d=>{
+                              const t = r.dateMap?.[d];
+                              return t ? `${d}(${t==="half"?"반":"연"})` : d;
+                            }).join(", ")} &nbsp;|&nbsp; {typeLabel(r.type)} &nbsp;|&nbsp; <strong style={{color:"var(--color-text-primary)"}}>{r.dayCount}일</strong>
                           </div>
                           <div style={{fontSize:12,color:"var(--color-text-secondary)"}}>
                             결재라인: {r.applicantName} → {getUserName(r.approver2)} → {getUserName(r.approver3)} → {getUserName(r.approver4)}
