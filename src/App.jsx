@@ -168,6 +168,8 @@ export default function App() {
   const [applyForm, setApplyForm] = useState({dates:[],type:"annual",approver2:""});
   const [myInfoForm,setMyInfoForm]= useState({position:"",oldPw:"",newPw:"",confirmPw:""});
   const [editLeave, setEditLeave] = useState({});
+  const [hrViewerEmail, setHrViewerEmail] = useState("jsw@csquaredasset.com");
+  const [hrViewerInput, setHrViewerInput] = useState("");
   const [leaveSearch, setLeaveSearch] = useState("");
   const [adminPwReset, setAdminPwReset] = useState({email:"",newPw:"",confirm:""});
 
@@ -191,6 +193,11 @@ export default function App() {
       const mcSnap = await getDoc(doc(db,"config","managerConfig"));
       if(mcSnap.exists()) setManagerConfig(mcSnap.data());
       else await setDoc(doc(db,"config","managerConfig"), DEFAULT_MANAGER_CONFIG);
+
+      // HR 뷰어 설정 로드
+      const hvSnap = await getDoc(doc(db,"config","hrViewer"));
+      if(hvSnap.exists()) setHrViewerEmail(hvSnap.data().email || "jsw@csquaredasset.com");
+      else await setDoc(doc(db,"config","hrViewer"),{email:"jsw@csquaredasset.com"});
 
       setLoading(false);
     };
@@ -223,7 +230,7 @@ export default function App() {
     if(!email) return "user";
     if(email===CEO_EMAIL) return "ceo";
     if(email===HR_APPROVER) return "hr";
-    if(email===HR_VIEWER) return "hr_viewer";
+    if(email===hrViewerEmail) return "hr_viewer";
     if(Object.values(managerConfig).includes(email)) return "manager";
     return "user";
   },[managerConfig]);
@@ -374,7 +381,7 @@ export default function App() {
     const email      = currentUser.email;
     const isCeo      = email === CEO_EMAIL;
     const isHr       = email === HR_APPROVER;
-    const isHrViewer = email === HR_VIEWER;
+    const isHrViewer = email === hrViewerEmail;
     const isManager  = Object.values(managerConfig).includes(email);
     return requests.filter(r=>{
       const s = typeof r.step==="string" ? parseInt(r.step) : r.step;
@@ -681,7 +688,7 @@ export default function App() {
         {/* ── 연차관리 탭 ── */}
         {tab==="annual" && (()=>{
           const myEmail = currentUser?.email;
-          const isHRUser  = myEmail === HR_APPROVER || myEmail === HR_VIEWER;
+          const isHRUser  = myEmail === HR_APPROVER || myEmail === hrViewerEmail;
           const isCEOUser = myEmail === CEO_EMAIL;
           const isAdmin   = isHRUser || isCEOUser;
           const canEdit   = isHRUser;
@@ -776,7 +783,7 @@ export default function App() {
                 {/* 상단: 설명 + 초기화 버튼 */}
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                   <p style={{fontSize:13,color:"var(--color-text-secondary)",margin:0}}>
-                    {myEmail===HR_APPROVER ? "💼 인사담당자 (강수민) — 전체 직원 연차 조회 및 수정" : myEmail===HR_VIEWER ? "💼 인사담당자 (jsw) — 전체 직원 연차 조회 및 수정" : "👔 대표이사 — 전체 직원 연차 조회"}
+                    {myEmail===HR_APPROVER ? "💼 인사담당자 (강수민) — 전체 직원 연차 조회 및 수정" : myEmail===hrViewerEmail ? `💼 HR 담당자 (${users[myEmail]?.name||myEmail}) — 전체 직원 연차 조회 및 수정` : "👔 대표이사 — 전체 직원 연차 조회"}
                   </p>
                   {canEdit && (
                     <button onClick={handleResetAllLeave} style={{padding:"7px 14px",background:"#C0392B",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:500,flexShrink:0,letterSpacing:"0.3px"}}>
@@ -872,6 +879,31 @@ export default function App() {
                     </div>
                   ))}
                   <button onClick={handleSaveManagerConfig} style={{marginTop:8,padding:"7px 16px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:500}}>저장</button>
+                </div>
+                )}
+                {/* HR 담당자 관리 — 인사담당자만 */}
+                {isHRUser && myEmail===HR_APPROVER && (
+                <div style={{background:"#ffffff",border:"1px solid #e8e5e0",borderRadius:4,padding:"1.25rem",marginBottom:16}}>
+                  <h3 style={{fontSize:15,fontWeight:500,marginBottom:4}}>HR 담당자 관리</h3>
+                  <p style={{fontSize:12,color:"#888",marginBottom:12}}>연차 조회·수정 권한을 부여할 직원 이메일을 설정하세요.<br/>현재: <strong>{users[hrViewerEmail]?.name||hrViewerEmail}</strong> ({hrViewerEmail})</p>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <select
+                      value={hrViewerInput||hrViewerEmail}
+                      onChange={e=>setHrViewerInput(e.target.value)}
+                      style={{flex:1,boxSizing:"border-box",fontSize:13}}
+                    >
+                      {Object.entries(users).map(([email,u])=>(
+                        <option key={email} value={email}>{u.name} ({email})</option>
+                      ))}
+                    </select>
+                    <button onClick={async()=>{
+                      const target = hrViewerInput||hrViewerEmail;
+                      await setDoc(doc(db,"config","hrViewer"),{email:target});
+                      setHrViewerEmail(target);
+                      setHrViewerInput("");
+                      showNotif(`HR 담당자가 ${users[target]?.name||target}으로 변경되었습니다!`);
+                    }} style={{padding:"7px 14px",background:"#1d9e75",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:13,fontWeight:500,flexShrink:0}}>저장</button>
+                  </div>
                 </div>
                 )}
                 {/* 관리자 비밀번호 초기화 — 인사담당자만 */}
