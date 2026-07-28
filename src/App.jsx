@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { initializeApp } from "firebase/app";
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import {
   getFirestore, doc, setDoc, getDoc, getDocs,
   collection, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy
@@ -18,6 +19,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
+const messaging = getMessaging(app);
+const VAPID_KEY = "BPsDdpPNqnzwKcNuvmp2KWMwz7SMC1r6ExnoFCee1hZuX16b0yu58HdJFKROkAAl4T2R31avqxs4RjnXZBnjz_E";
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 const DEPARTMENTS = ["자산운용파트","해외운용파트","마케팅팀","리스크관리팀","운용지원팀","경영지원팀"];
@@ -54,6 +57,35 @@ function formatDate(d) {
 }
 
 function getDaysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
+
+// ─── 푸시 알림 토큰 저장/요청 ────────────────────────────────────────────────
+async function requestPushPermission(email, db, emailToKey) {
+  try {
+    const permission = await Notification.requestPermission();
+    if(permission !== "granted") return;
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+    if(token) {
+      await updateDoc(doc(db,"users",emailToKey(email)),{ fcmToken: token });
+    }
+  } catch(e) {
+    console.log("푸시 알림 설정 실패:", e);
+  }
+}
+
+// ─── 특정 유저에게 푸시 알림 저장 (Firestore 경유) ───────────────────────────
+async function savePushNotification(db, targetEmail, title, body) {
+  try {
+    await addDoc(collection(db,"notifications"),{
+      targetEmail,
+      title,
+      body,
+      createdAt: new Date().toISOString(),
+      read: false
+    });
+  } catch(e) {
+    console.log("알림 저장 실패:", e);
+  }
+}
 function getFirstDay(y,m){ return new Date(y,m,1).getDay(); }
 
 // ─── PDF 기안문서 ──────────────────────────────────────────────────────────────
@@ -176,6 +208,37 @@ export default function App() {
 
   const showNotif = (text,ms=2800) => { setNotif(text); setTimeout(()=>setNotif(""),ms); };
 
+  // 포그라운드 푸시 메시지 수신
+  useEffect(()=>{
+    try {
+      onMessage(messaging, payload=>{
+        const {title,body} = payload.notification||{};
+        if(title) showNotif(`${title}: ${body}`, 5000);
+      });
+    } catch(e) {}
+  },[]);
+
+  // 내 알림 실시간 구독
+  useEffect(()=>{
+    if(!currentUser) return;
+    const q = query(
+      collection(db,"notifications"),
+      orderBy("createdAt","desc")
+    );
+    const unsub = onSnapshot(q, snap=>{
+      snap.docChanges().forEach(change=>{
+        if(change.type==="added"){
+          const n = change.doc.data();
+          if(n.targetEmail===currentUser.email && !n.read){
+            showNotif(`${n.title}: ${n.body}`, 5000);
+            updateDoc(change.doc.ref,{read:true});
+          }
+        }
+      });
+    });
+    return unsub;
+  },[currentUser]);
+
   // ── Firestore 초기 로드 ───────────────────────────────────────────────────
   useEffect(()=>{
     const init = async () => {
@@ -250,8 +313,13 @@ export default function App() {
     const u = users[loginForm.email];
     if(!u){ setMsg("가입되지 않은 이메일입니다."); return; }
     if(u.password!==loginForm.password){ setMsg("비밀번호가 틀렸습니다."); return; }
-    setCurrentUser({...u, role:getUserRole(loginForm.email)});
+    const loggedInUser = {...u, role:getUserRole(loginForm.email)};
+    setCurrentUser(loggedInUser);
     setPage("main"); setTab("apply"); setMsg("");
+    // 푸시 알림 권한 요청
+    if("Notification" in window) {
+      requestPushPermission(loginForm.email, db, emailToKey);
+    }
   };
 
   // ── 회원가입 ─────────────────────────────────────────────────────────────
@@ -788,7 +856,7 @@ export default function App() {
                     <div style={{display:"flex",gap:4,alignItems:"center"}}>
                       <input type="number" value={editLeave[keyU]} onChange={e=>setEditLeave(p=>({...p,[keyU]:e.target.value}))} style={{width:50,padding:"3px 5px"}} min={0} />
                       <button onClick={async()=>{
-                        const val=parseInt(editLeave[keyU]);
+                        const val=parseFloat(editLeave[keyU]);
                         if(isNaN(val)||val<0){showNotif("올바른 값을 입력해주세요.");return;}
                         await updateDoc(doc(db,"users",emailToKey(email)),{usedLeave:val});
                         setEditLeave(p=>{const n={...p};delete n[keyU];return n;});
@@ -871,9 +939,9 @@ export default function App() {
                               <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>사용연차</div>
                               {canEdit && editLeave[kU]!==undefined ? (
                                 <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                                  <input type="number" value={editLeave[kU]} onChange={e=>setEditLeave(p=>({...p,[kU]:e.target.value}))} style={{width:"100%",padding:"3px",textAlign:"center",boxSizing:"border-box"}} min={0} />
+                                  <input type="number" value={editLeave[kU]} onChange={e=>setEditLeave(p=>({...p,[kU]:e.target.value}))} style={{width:"100%",padding:"3px",textAlign:"center",boxSizing:"border-box"}} min={0} step={0.5} />
                                   <div style={{display:"flex",gap:3}}>
-                                    <button onClick={async()=>{const val=parseInt(editLeave[kU]);if(isNaN(val)||val<0)return;await updateDoc(doc(db,"users",emailToKey(email)),{usedLeave:val});setEditLeave(p=>{const n={...p};delete n[kU];return n;});showNotif("저장!");}} style={{flex:1,padding:"3px",background:"#ba7517",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:10}}>저장</button>
+                                    <button onClick={async()=>{const val=parseFloat(editLeave[kU]);if(isNaN(val)||val<0)return;await updateDoc(doc(db,"users",emailToKey(email)),{usedLeave:val});setEditLeave(p=>{const n={...p};delete n[kU];return n;});showNotif("저장!");}} style={{flex:1,padding:"3px",background:"#ba7517",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:10}}>저장</button>
                                     <button onClick={()=>setEditLeave(p=>{const n={...p};delete n[kU];return n;})} style={{flex:1,padding:"3px",background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:4,cursor:"pointer",fontSize:10}}>취소</button>
                                   </div>
                                 </div>
