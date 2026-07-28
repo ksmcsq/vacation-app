@@ -1,11 +1,3 @@
-// Updated: 2026-07-28 04:34
-          <div style={{textAlign:"center",marginBottom:"2rem"}}>
-          <div style={{fontSize:22,marginBottom:8}}>🏢</div>
-          <h1 style={{fontSize:16,fontWeight:600,margin:0,color:"#2C2C2C",letterSpacing:"0.5px"}}>씨스퀘어자산운용(주)</h1>
-          <p style={{fontSize:12,color:"#1d9e75",margin:"4px 0 0",letterSpacing:"0.5px",fontWeight:500}}>휴가관리 시스템</p>
-        </div>
-          <h2 style={{fontSize:16,fontWeight:500,marginBottom:16}}>회원가입</h2>// ─── Firebase + EmailJS 연동 버전 ──────────────────────────────────────────────
-// Firebase config (csquared-vacation 프로젝트)
 import { useState, useEffect, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import {
@@ -446,11 +438,11 @@ export default function App() {
   // ── 로그인 화면 ───────────────────────────────────────────────────────────
   if(page==="login") return (
     <div style={{...cs,display:"flex",alignItems:"center",justifyContent:"center",padding:"2rem 1rem",background:"#F4F3F0"}}>
-      <div style={{background:"var(--color-background-primary)",borderRadius:"var(--border-radius-lg)",border:"0.5px solid var(--color-border-tertiary)",padding:"2.5rem 2rem",width:"100%",maxWidth:400}}>
+      <div style={{background:"#ffffff",borderRadius:4,border:"1px solid #e2dfd8",padding:"2.5rem 2rem",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.06)"}}>
         <div style={{textAlign:"center",marginBottom:"2rem"}}>
-          <div style={{fontSize:28,marginBottom:6}}>🏢</div>
-          <h1 style={{fontSize:18,fontWeight:500,margin:0}}>씨스퀘어자산운용(주) 휴가관리</h1>
-          <p style={{fontSize:12,color:"var(--color-text-secondary)",margin:"4px 0 0"}}>csquaredasset.com</p>
+          <div style={{fontSize:28,marginBottom:8}}>🏢</div>
+          <h1 style={{fontSize:17,fontWeight:600,margin:0,color:"#2C2C2C",letterSpacing:"0.3px"}}>씨스퀘어자산운용(주)</h1>
+          <p style={{fontSize:13,color:"#1d9e75",margin:"4px 0 0",fontWeight:500}}>휴가관리 시스템</p>
         </div>
 
         {authMode==="login" && (<>
