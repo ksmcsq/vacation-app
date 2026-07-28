@@ -1,3 +1,4 @@
+// Updated: 2026-07-28 04:34
           <div style={{textAlign:"center",marginBottom:"2rem"}}>
           <div style={{fontSize:22,marginBottom:8}}>🏢</div>
           <h1 style={{fontSize:16,fontWeight:600,margin:0,color:"#2C2C2C",letterSpacing:"0.5px"}}>씨스퀘어자산운용(주)</h1>
