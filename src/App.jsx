@@ -25,6 +25,21 @@ const VAPID_KEY = "BPsDdpPNqnzwKcNuvmp2KWMwz7SMC1r6ExnoFCee1hZuX16b0yu58HdJFKROk
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 const DEPARTMENTS = ["자산운용파트","해외운용파트","마케팅팀","리스크관리팀","운용지원팀","경영지원팀"];
 const HR_EMAILS   = ["ksm@csquaredasset.com","jsw@csquaredasset.com"];
+
+// ─── 경조사 유형 정의 ─────────────────────────────────────────────────────────
+const GYEONGJO_TYPES = [
+  { id:"wedding_self",    label:"결혼 - 본인",                          days:5,  desc:"본인 결혼" },
+  { id:"wedding_child",   label:"결혼 - 자녀",                          days:1,  desc:"자녀 결혼" },
+  { id:"wedding_sibling", label:"결혼 - 형제/자매",                     days:1,  desc:"형제·자매 결혼" },
+  { id:"birth_single",    label:"출산 - 본인 단태아 (90일)",             days:90, desc:"본인 출산(단태아)", isBirth:true },
+  { id:"birth_multi",     label:"출산 - 본인 다태아 (120일)",            days:120,desc:"본인 출산(다태아)", isBirth:true },
+  { id:"birth_spouse",    label:"출산 - 배우자 (20일)",                  days:20, desc:"배우자 출산", isBirth:true },
+  { id:"death_spouse",    label:"사망 - 배우자 (5일)",                   days:5,  desc:"배우자 사망" },
+  { id:"death_parent",    label:"사망 - 본인·배우자 부모 (5일)",         days:5,  desc:"본인 또는 배우자 부모 사망" },
+  { id:"death_child",     label:"사망 - 자녀 (5일)",                    days:5,  desc:"자녀 사망" },
+  { id:"death_sibling",   label:"사망 - 본인 형제/자매 (3일)",           days:3,  desc:"본인 형제·자매 사망" },
+  { id:"death_grandp",    label:"사망 - 본인·배우자 조부모·외조부모 (1일)",days:1, desc:"본인 또는 배우자 조부모·외조부모 사망" },
+];
 const HR_APPROVER = "ksm@csquaredasset.com";  // 결재 3단계 고정
 const HR_VIEWER   = "jsw@csquaredasset.com";  // 연차 조회/수정 전용
 const CEO_EMAIL   = "cjhfund@gmail.com";
@@ -90,7 +105,9 @@ function getFirstDay(y,m){ return new Date(y,m,1).getDay(); }
 
 // ─── PDF 기안문서 ──────────────────────────────────────────────────────────────
 function generatePDF(r, getUserNameFn) {
-  const typeLabel   = r.type==="half" ? "반차" : "연차";
+  const typeLabel = r.leaveCategory==="gyeongjo" ? `경조사 - ${r.gyeongjoLabel||""}` :
+                    r.leaveCategory==="gongga" ? "공가" :
+                    r.type==="half" ? "반차" : r.type==="mixed" ? "연차+반차 혼합" : "연차";
   const approvedDate = r.approvedAt ? formatDate(r.approvedAt) : "-";
   const docNo = `VAC-${new Date(r.createdAt).getFullYear()}-${String(r.id||"").slice(-5)}`;
   const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
@@ -206,7 +223,7 @@ export default function App() {
   const [loginForm, setLoginForm] = useState({email:"",password:""});
   const [regForm,   setRegForm]   = useState({email:"",name:"",dept:"자산운용파트",position:"팀원",password:"",confirm:""});
   const [findForm,  setFindForm]  = useState({email:"",name:""});
-  const [applyForm, setApplyForm] = useState({dateMap:{},approver2:""});
+  const [applyForm, setApplyForm] = useState({dateMap:{},approver2:"",leaveCategory:"annual",gyeongjoType:"",birthStart:""});
   const [myInfoForm,setMyInfoForm]= useState({position:"",oldPw:"",newPw:"",confirmPw:""});
   const [editLeave, setEditLeave] = useState({});
   const [hrViewerEmail, setHrViewerEmail] = useState("jsw@csquaredasset.com");
@@ -388,6 +405,10 @@ export default function App() {
       dates:          Object.keys(applyForm.dateMap).sort(),
       dateMap:        applyForm.dateMap,
       type:           Object.values(applyForm.dateMap).every(t=>t==="half") ? "half" : Object.values(applyForm.dateMap).every(t=>t==="annual") ? "annual" : "mixed",
+      leaveCategory:  applyForm.leaveCategory||"annual",
+      gyeongjoType:   applyForm.gyeongjoType||"",
+      gyeongjoLabel:  gyeongjoInfo?.desc||"",
+      deductLeave:    isAnnualType,
       dayCount,
       approver1: currentUser.email,
       approver2: applyForm.approver2,
@@ -398,7 +419,7 @@ export default function App() {
       createdAt: new Date().toISOString(),
       approvedAt: null,
     });
-    setApplyForm({dateMap:{},approver2:""});
+    setApplyForm({dateMap:{},approver2:"",leaveCategory:"annual",gyeongjoType:"",birthStart:""});
     showNotif("✅ 휴가 신청이 완료되었습니다!");
   };
 
@@ -425,7 +446,9 @@ export default function App() {
       await updateDoc(ref,{step:5, status:"approved", approvedAt:new Date().toISOString()});
       const ukey = emailToKey(r.applicantEmail);
       const u = users[r.applicantEmail];
-      await updateDoc(doc(db,"users",ukey),{usedLeave:(u?.usedLeave||0)+r.dayCount});
+      if(r.deductLeave !== false) {
+        await updateDoc(doc(db,"users",ukey),{usedLeave:(u?.usedLeave||0)+r.dayCount});
+      }
     }
   };
 
@@ -526,7 +549,13 @@ export default function App() {
     return {label:m[step]||"진행중", color:"#2E6DA4"};
   };
 
-  const typeLabel = t => t==="half"?"반차(0.5일)":t==="mixed"?"연차+반차 혼합":"연차(1일)";
+  const typeLabel = (t, leaveCategory, gyeongjoLabel) => {
+    if(leaveCategory==="gyeongjo") return gyeongjoLabel ? `경조사 - ${gyeongjoLabel}` : "경조사";
+    if(leaveCategory==="gongga") return "공가";
+    if(t==="half") return "반차(0.5일)";
+    if(t==="mixed") return "연차+반차 혼합";
+    return "연차(1일)";
+  };
 
   // ── 로딩 ──────────────────────────────────────────────────────────────────
   if(loading) return (
@@ -692,41 +721,139 @@ export default function App() {
                   <input value={cu?.name||""} readOnly style={{width:"100%",boxSizing:"border-box",background:"var(--color-background-secondary)"}} />
                 </div>
               </div>
+              {/* 휴가 종류 선택 */}
+              <div style={{marginBottom:14}}>
+                <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:8}}>휴가 종류 <span style={{color:"#e24b4a"}}>*</span></label>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {[
+                    {id:"annual", label:"연차/반차", color:"#1d9e75"},
+                    {id:"gyeongjo", label:"경조사", color:"#8B5CF6"},
+                    {id:"gongga", label:"공가", color:"#2E6DA4"},
+                  ].map(({id,label,color})=>(
+                    <button key={id} onClick={()=>setApplyForm(p=>({...p,leaveCategory:id,dateMap:{},gyeongjoType:"",birthStart:""}))}
+                      style={{padding:"7px 16px",borderRadius:4,border:`1.5px solid ${applyForm.leaveCategory===id?color:"#e8e5e0"}`,
+                        background:applyForm.leaveCategory===id?color+"18":"#fff",
+                        color:applyForm.leaveCategory===id?color:"#888",
+                        fontWeight:applyForm.leaveCategory===id?600:400,fontSize:13,cursor:"pointer"}}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 경조사 유형 선택 */}
+              {applyForm.leaveCategory==="gyeongjo" && (
+                <div style={{marginBottom:14}}>
+                  <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:6}}>경조사 유형 <span style={{color:"#e24b4a"}}>*</span></label>
+                  <select value={applyForm.gyeongjoType} onChange={e=>setApplyForm(p=>({...p,gyeongjoType:e.target.value,dateMap:{},birthStart:""}))}
+                    style={{width:"100%",boxSizing:"border-box",fontSize:13,padding:"8px"}}>
+                    <option value="">유형을 선택해주세요</option>
+                    {GYEONGJO_TYPES.map(g=>(
+                      <option key={g.id} value={g.id}>{g.label}</option>
+                    ))}
+                  </select>
+                  {applyForm.gyeongjoType && (()=>{
+                    const g = GYEONGJO_TYPES.find(x=>x.id===applyForm.gyeongjoType);
+                    return g ? (
+                      <div style={{marginTop:8,padding:"8px 12px",background:"#F3F0FF",borderRadius:4,fontSize:12,color:"#8B5CF6",fontWeight:500}}>
+                        📋 {g.desc} — 최대 <strong>{g.isBirth ? `${g.days}일 (역일 기준)` : `${g.days}일 (영업일 기준)`}</strong> 사용 가능
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+
+              {/* 공가 안내 */}
+              {applyForm.leaveCategory==="gongga" && (
+                <div style={{marginBottom:14,padding:"8px 12px",background:"#EBF4FF",borderRadius:4,fontSize:12,color:"#2E6DA4",fontWeight:500}}>
+                  📋 공가 — 최대 10일 선택 가능합니다. 연차 차감 없이 결재만 진행됩니다.<br/>
+                  <span style={{fontWeight:400}}>(예비군·민방위·선거·법원출석 등)</span>
+                </div>
+              )}
+
+              {/* 출산휴가 - 시작일 입력 */}
+              {applyForm.leaveCategory==="gyeongjo" && GYEONGJO_TYPES.find(g=>g.id===applyForm.gyeongjoType)?.isBirth ? (
+                <div style={{marginBottom:16}}>
+                  <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:6}}>휴가 시작일 <span style={{color:"#e24b4a"}}>*</span></label>
+                  <input type="date" value={applyForm.birthStart} onChange={e=>setApplyForm(p=>({...p,birthStart:e.target.value}))}
+                    style={{width:"100%",boxSizing:"border-box",fontSize:13}} />
+                  {applyForm.birthStart && (()=>{
+                    const g = GYEONGJO_TYPES.find(x=>x.id===applyForm.gyeongjoType);
+                    const start = new Date(applyForm.birthStart);
+                    const end = new Date(start);
+                    end.setDate(end.getDate() + g.days - 1);
+                    return (
+                      <div style={{marginTop:8,padding:"8px 12px",background:"#EAF3EE",borderRadius:4,fontSize:12,color:"#1d9e75"}}>
+                        📅 {applyForm.birthStart} ~ {end.toISOString().slice(0,10)} ({g.days}일, 주말·공휴일 포함)
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <>
+              {/* 연차/반차/경조사/공가 달력 */}
+              {(applyForm.leaveCategory==="annual" || (applyForm.leaveCategory==="gyeongjo" && applyForm.gyeongjoType) || applyForm.leaveCategory==="gongga") && (
+              <>
+              {applyForm.leaveCategory==="annual" && (
               <div style={{marginBottom:8,padding:"8px 12px",background:"#EAF3EE",borderRadius:4,fontSize:12,color:"#1d9e75"}}>
                 💡 날짜를 클릭하면 <strong>연차</strong>, 한 번 더 클릭하면 <strong>반차</strong>, 다시 클릭하면 <strong>취소</strong>예요.
               </div>
+              )}
               <div style={{marginBottom:16}}>
-                <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:8}}>휴가 날짜 선택 <span style={{color:"#e24b4a"}}>*</span> <span style={{color:"var(--color-text-secondary)"}}>(복수 선택 가능)</span></label>
+                <label style={{fontSize:12,color:"var(--color-text-secondary)",display:"block",marginBottom:8}}>
+                  휴가 날짜 선택 <span style={{color:"#e24b4a"}}>*</span>
+                  {applyForm.leaveCategory==="gyeongjo" && GYEONGJO_TYPES.find(g=>g.id===applyForm.gyeongjoType) && (
+                    <span style={{color:"#8B5CF6",marginLeft:6}}>
+                      (최대 {GYEONGJO_TYPES.find(g=>g.id===applyForm.gyeongjoType).days}일 선택 가능)
+                    </span>
+                  )}
+                  {applyForm.leaveCategory==="gongga" && <span style={{color:"#2E6DA4",marginLeft:6}}>(최대 10일 선택)</span>}
+                </label>
                 <Calendar
                   selectedDates={Object.keys(applyForm.dateMap)}
                   dateMap={applyForm.dateMap}
                   onToggleDate={key=>setApplyForm(p=>{
                     const m = {...p.dateMap};
-                    if(!m[key]) m[key]="annual";           // 첫클릭: 연차
-                    else if(m[key]==="annual") m[key]="half"; // 두번째: 반차
-                    else delete m[key];                     // 세번째: 취소
+                    const maxDays = applyForm.leaveCategory==="gongga" ? 10
+                      : applyForm.leaveCategory==="gyeongjo" ? (GYEONGJO_TYPES.find(g=>g.id===applyForm.gyeongjoType)?.days||999)
+                      : 999;
+                    if(!m[key]){
+                      if(Object.keys(m).length >= maxDays){ showNotif(`최대 ${maxDays}일까지 선택 가능합니다.`); return p; }
+                      m[key] = applyForm.leaveCategory==="annual" ? "annual" : applyForm.leaveCategory;
+                    } else if(applyForm.leaveCategory==="annual" && m[key]==="annual") m[key]="half";
+                    else delete m[key];
                     return {...p, dateMap:m};
                   })}
                 />
                 {Object.keys(applyForm.dateMap).length>0&&(()=>{
                   const entries = Object.entries(applyForm.dateMap).sort();
-                  const total = entries.reduce((s,[,t])=>s+(t==="half"?0.5:1),0);
+                  const isAnnualCat = applyForm.leaveCategory==="annual";
+                  const total = isAnnualCat ? entries.reduce((s,[,t])=>s+(t==="half"?0.5:1),0) : entries.length;
                   return (
                     <div style={{marginTop:8}}>
                       <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:4}}>
                         {entries.map(([d,t])=>(
-                          <span key={d} style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:t==="half"?"#FFF3E0":"#EAF3EE",color:t==="half"?"#E65100":"#1d9e75",fontWeight:500}}>
-                            {d} {t==="half"?"(반차)":"(연차)"}
+                          <span key={d} style={{fontSize:11,padding:"2px 8px",borderRadius:10,
+                            background:t==="half"?"#FFF3E0":applyForm.leaveCategory==="gyeongjo"?"#F3F0FF":applyForm.leaveCategory==="gongga"?"#EBF4FF":"#EAF3EE",
+                            color:t==="half"?"#E65100":applyForm.leaveCategory==="gyeongjo"?"#8B5CF6":applyForm.leaveCategory==="gongga"?"#2E6DA4":"#1d9e75",
+                            fontWeight:500}}>
+                            {d}{isAnnualCat ? (t==="half"?" (반차)":" (연차)") : ""}
                           </span>
                         ))}
                       </div>
                       <p style={{fontSize:12,color:"var(--color-text-secondary)",margin:0}}>
-                        총 <strong style={{color:"#2C2C2C"}}>{entries.length}일</strong> 선택 → 차감 <strong style={{color:"#1d9e75"}}>{total}일</strong>
+                        총 <strong style={{color:"#2C2C2C"}}>{entries.length}일</strong> 선택
+                        {isAnnualCat && <> → 차감 <strong style={{color:"#1d9e75"}}>{total}일</strong></>}
+                        {!isAnnualCat && <span style={{color:"#888",marginLeft:4}}>(연차 차감 없음)</span>}
                       </p>
                     </div>
                   );
                 })()}
               </div>
+              </>
+              )}
+              </>
+              )}
               <div style={{marginBottom:20,padding:"1rem",background:"#F8F7F5",borderRadius:4,border:"1px solid #e8e5e0"}}>
                 <h3 style={{fontSize:14,fontWeight:500,marginBottom:12}}>결재라인</h3>
                 {(()=>{
@@ -788,7 +915,7 @@ export default function App() {
                             📅 {(r.dates||[]).map(d=>{
                               const t = r.dateMap?.[d];
                               return t ? `${d}(${t==="half"?"반":"연"})` : d;
-                            }).join(", ")} &nbsp;|&nbsp; {typeLabel(r.type)} &nbsp;|&nbsp; <strong style={{color:"var(--color-text-primary)"}}>{r.dayCount}일</strong>
+                            }).join(", ")} &nbsp;|&nbsp; {typeLabel(r.type, r.leaveCategory, r.gyeongjoLabel)} &nbsp;|&nbsp; <strong style={{color:"var(--color-text-primary)"}}>{r.dayCount}일</strong>
                           </div>
                           <div style={{fontSize:12,color:"var(--color-text-secondary)"}}>
                             결재라인: {r.applicantName} → {getUserName(r.approver2)} → {getUserName(r.approver3)} → {getUserName(r.approver4)}
@@ -845,16 +972,24 @@ export default function App() {
             if(showAll) return true;
             return users[r.applicantEmail]?.dept === currentUser?.dept;
           });
+          // 캘린더 색상 - 경조사/공가 구분
+          const getEventColor = (r, isMe) => {
+            if(r.leaveCategory==="gyeongjo") return isMe ? "#8B5CF6" : "#A78BFA";
+            if(r.leaveCategory==="gongga") return isMe ? "#2E6DA4" : "#60A5FA";
+            return isMe ? "#1d9e75" : "#2E6DA4";
+          };
 
           // 달력 날짜별 휴가 맵핑
           const calendarMap = {};
           approvedRequests.forEach(r => {
             (r.dates||[]).forEach(d => {
               if(!calendarMap[d]) calendarMap[d] = [];
+              const isMe = r.applicantEmail === myEmail;
               calendarMap[d].push({
                 name: r.applicantName,
                 type: r.type,
-                color: r.applicantEmail === myEmail ? "#1d9e75" : "#2E6DA4"
+                leaveCategory: r.leaveCategory,
+                color: getEventColor(r, isMe)
               });
             });
           });
@@ -1008,7 +1143,7 @@ export default function App() {
                       {d && <div style={{fontSize:11,fontWeight:isToday?600:400,color:isToday?"#1d9e75":i%7===0?"#e24b4a":i%7===6?"#2E6DA4":"#555",marginBottom:2}}>{d}</div>}
                       {events.slice(0,2).map((ev,ei)=>(
                         <div key={ei} style={{fontSize:10,background:ev.color+"22",color:ev.color,borderRadius:2,padding:"1px 3px",marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500}}>
-                          {ev.name} {ev.type==="half"?"(반)":""}
+                          {ev.name}{ev.type==="half"?"(반)":ev.leaveCategory==="gyeongjo"?"(경)":ev.leaveCategory==="gongga"?"(공)":""}
                         </div>
                       ))}
                       {events.length>2 && <div style={{fontSize:9,color:"#888"}}>+{events.length-2}명</div>}
@@ -1017,16 +1152,12 @@ export default function App() {
                 })}
               </div>
               {/* 범례 */}
-              <div style={{display:"flex",gap:12,marginTop:10,fontSize:11,color:"#888"}}>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <div style={{width:10,height:10,borderRadius:2,background:"#1d9e7522"}}></div>내 휴가
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <div style={{width:10,height:10,borderRadius:2,background:"#2E6DA422"}}></div>팀원 휴가
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <div style={{width:10,height:10,borderRadius:2,background:"#EAF3EE",border:"1.5px solid #1d9e75"}}></div>오늘
-                </div>
+              <div style={{display:"flex",gap:10,marginTop:10,fontSize:11,color:"#888",flexWrap:"wrap"}}>
+                <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,borderRadius:2,background:"#1d9e7522"}}></div>내 연차</div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,borderRadius:2,background:"#2E6DA422"}}></div>팀원 연차</div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,borderRadius:2,background:"#8B5CF622"}}></div>경조사</div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,borderRadius:2,background:"#2E6DA422"}}></div>공가</div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,borderRadius:2,background:"#EAF3EE",border:"1.5px solid #1d9e75"}}></div>오늘</div>
               </div>
             </div>
             {isAdmin ? (
