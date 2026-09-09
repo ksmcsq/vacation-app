@@ -383,6 +383,9 @@ export default function App() {
 
   // ── 휴가 신청 ─────────────────────────────────────────────────────────────
   const handleApply = async () => {
+    const isAnnualType = applyForm.leaveCategory === "annual";
+    const gyeongjoInfo = GYEONGJO_TYPES.find(g=>g.id===applyForm.gyeongjoType);
+
     const dateEntries = Object.entries(applyForm.dateMap);
     if(!dateEntries.length){ showNotif("휴가 날짜를 선택해주세요."); return; }
     if(!applyForm.approver2){ showNotif("2단계 결재자를 선택해주세요."); return; }
@@ -390,7 +393,7 @@ export default function App() {
     const u = users[currentUser.email];
     const annualLeave = u?.annualLeave ?? 15;
     const usedLeave   = u?.usedLeave   ?? 0;
-    if(dayCount > (annualLeave - usedLeave)){ showNotif("잔여 연차가 부족합니다."); return; }
+    if(isAnnualType && dayCount > (annualLeave - usedLeave)){ showNotif("잔여 연차가 부족합니다."); return; }
     // 신청자=팀장(2단계) 동일인이면 자동 통과
     // 신청자=팀장=인사담당자 모두 동일인이면 바로 대표이사(3단계)로
     let autoStep = 1;
